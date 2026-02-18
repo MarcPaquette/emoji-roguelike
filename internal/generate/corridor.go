@@ -1,6 +1,6 @@
 package generate
 
-import "emoji-rougelike/internal/gamemap"
+import "emoji-roguelike/internal/gamemap"
 
 // carveCorridor digs an L-shaped tunnel between (x1,y1) and (x2,y2).
 func carveCorridor(gmap *gamemap.GameMap, x1, y1, x2, y2 int, cfg *Config) {

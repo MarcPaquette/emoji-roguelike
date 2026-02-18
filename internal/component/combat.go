@@ -1,6 +1,6 @@
 package component
 
-import "emoji-rougelike/internal/ecs"
+import "emoji-roguelike/internal/ecs"
 
 const CCombat ecs.ComponentType = 4
 

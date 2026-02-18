@@ -1,7 +1,7 @@
 package main
 
 import (
-	"emoji-rougelike/internal/game"
+	"emoji-roguelike/internal/game"
 	"fmt"
 	"os"
 )

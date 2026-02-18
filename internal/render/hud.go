@@ -1,8 +1,8 @@
 package render
 
 import (
-	"emoji-rougelike/internal/component"
-	"emoji-rougelike/internal/ecs"
+	"emoji-roguelike/internal/component"
+	"emoji-roguelike/internal/ecs"
 	"fmt"
 
 	"github.com/gdamore/tcell/v2"

@@ -1,7 +1,7 @@
 package generate
 
 import (
-	"emoji-rougelike/internal/gamemap"
+	"emoji-roguelike/internal/gamemap"
 	"math/rand"
 )
 

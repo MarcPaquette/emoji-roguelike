@@ -1,7 +1,7 @@
 package game
 
 import (
-	"emoji-rougelike/assets"
+	"emoji-roguelike/assets"
 	"fmt"
 
 	"github.com/gdamore/tcell/v2"

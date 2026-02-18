@@ -10,7 +10,7 @@ go test ./...           # run all tests
 go test ./internal/ecs/ # run tests for a single package
 go test -run TestFoo ./internal/system/  # run one test by name
 go mod tidy             # sync go.sum after changing dependencies
-./emoji-rougelike       # run the game (requires an emoji-capable terminal)
+./emoji-roguelike       # run the game (requires an emoji-capable terminal)
 ```
 
 The binary requires a terminal with full emoji support (kitty, GNOME Terminal, iTerm2). Plain xterm will render emoji incorrectly.

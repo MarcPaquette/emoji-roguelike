@@ -1,7 +1,7 @@
 package generate
 
 import (
-	"emoji-rougelike/internal/gamemap"
+	"emoji-roguelike/internal/gamemap"
 )
 
 // SpawnPoint holds a world coordinate where an entity should appear.

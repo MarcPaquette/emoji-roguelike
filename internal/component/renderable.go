@@ -1,7 +1,7 @@
 package component
 
 import (
-	"emoji-rougelike/internal/ecs"
+	"emoji-roguelike/internal/ecs"
 
 	"github.com/gdamore/tcell/v2"
 )

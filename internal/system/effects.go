@@ -1,8 +1,8 @@
 package system
 
 import (
-	"emoji-rougelike/internal/component"
-	"emoji-rougelike/internal/ecs"
+	"emoji-roguelike/internal/component"
+	"emoji-roguelike/internal/ecs"
 )
 
 // TickEffects decrements all active effects by one turn and removes expired ones.

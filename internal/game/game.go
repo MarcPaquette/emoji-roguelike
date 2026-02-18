@@ -1,14 +1,14 @@
 package game
 
 import (
-	"emoji-rougelike/assets"
-	"emoji-rougelike/internal/component"
-	"emoji-rougelike/internal/ecs"
-	"emoji-rougelike/internal/factory"
-	"emoji-rougelike/internal/gamemap"
-	"emoji-rougelike/internal/generate"
-	"emoji-rougelike/internal/render"
-	"emoji-rougelike/internal/system"
+	"emoji-roguelike/assets"
+	"emoji-roguelike/internal/component"
+	"emoji-roguelike/internal/ecs"
+	"emoji-roguelike/internal/factory"
+	"emoji-roguelike/internal/gamemap"
+	"emoji-roguelike/internal/generate"
+	"emoji-roguelike/internal/render"
+	"emoji-roguelike/internal/system"
 	"fmt"
 	"math/rand"
 	"time"

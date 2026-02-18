@@ -1,9 +1,9 @@
 package system
 
 import (
-	"emoji-rougelike/internal/component"
-	"emoji-rougelike/internal/ecs"
-	"emoji-rougelike/internal/gamemap"
+	"emoji-roguelike/internal/component"
+	"emoji-roguelike/internal/ecs"
+	"emoji-roguelike/internal/gamemap"
 	"math"
 	"math/rand"
 )

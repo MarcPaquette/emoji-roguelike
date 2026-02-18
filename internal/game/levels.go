@@ -1,8 +1,8 @@
 package game
 
 import (
-	"emoji-rougelike/assets"
-	"emoji-rougelike/internal/generate"
+	"emoji-roguelike/assets"
+	"emoji-roguelike/internal/generate"
 	"math"
 	"math/rand"
 )

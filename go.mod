@@ -1,4 +1,4 @@
-module emoji-rougelike
+module emoji-roguelike
 
 go 1.25.4
 

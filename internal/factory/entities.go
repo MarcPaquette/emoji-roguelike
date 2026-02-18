@@ -1,10 +1,10 @@
 package factory
 
 import (
-	"emoji-rougelike/assets"
-	"emoji-rougelike/internal/component"
-	"emoji-rougelike/internal/ecs"
-	"emoji-rougelike/internal/generate"
+	"emoji-roguelike/assets"
+	"emoji-roguelike/internal/component"
+	"emoji-roguelike/internal/ecs"
+	"emoji-roguelike/internal/generate"
 
 	"github.com/gdamore/tcell/v2"
 )

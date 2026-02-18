@@ -1,6 +1,6 @@
 package assets
 
-import "emoji-rougelike/internal/generate"
+import "emoji-roguelike/internal/generate"
 
 // Emoji constants used as entity glyphs.
 const (
