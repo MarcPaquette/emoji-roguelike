@@ -12,7 +12,7 @@ type FloorTiles struct {
 }
 
 // TileThemes maps floor number (1-indexed) to its tile set.
-var TileThemes = [6]FloorTiles{
+var TileThemes = [11]FloorTiles{
 	{}, // index 0 unused
 	{
 		// Floor 1 — Crystalline Labs: ice and frost
@@ -46,6 +46,41 @@ var TileThemes = [6]FloorTiles{
 		// Floor 5 — Apex Nexus: skulls and void energy
 		Wall:     "💀",
 		Floor:    "🔴",
+		DimWall:  "🌑",
+		DimFloor: "🔲",
+	},
+	{
+		// Floor 6 — Membrane of Echoes: dimensional fluid
+		Wall:     "🌊",
+		Floor:    "🔵",
+		DimWall:  "🌑",
+		DimFloor: "🔲",
+	},
+	{
+		// Floor 7 — The Calcified Archive: ossified knowledge
+		Wall:     "📚",
+		Floor:    "📄",
+		DimWall:  "🌑",
+		DimFloor: "🔲",
+	},
+	{
+		// Floor 8 — Abyssal Foundry: hellforge, primordial energy
+		Wall:     "🌋",
+		Floor:    "🟠",
+		DimWall:  "🌑",
+		DimFloor: "🔲",
+	},
+	{
+		// Floor 9 — The Dreaming Cortex: psionic landscape
+		Wall:     "💭",
+		Floor:    "⭐",
+		DimWall:  "🌑",
+		DimFloor: "🔲",
+	},
+	{
+		// Floor 10 — The Prismatic Heart: crystallised consciousness
+		Wall:     "🔷",
+		Floor:    "🌟",
 		DimWall:  "🌑",
 		DimFloor: "🔲",
 	},

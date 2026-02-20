@@ -16,13 +16,17 @@ const (
 
 // EnemySpawnEntry describes one possible enemy spawn with its threat cost.
 type EnemySpawnEntry struct {
-	Glyph      string
-	Name       string
-	ThreatCost int
-	Attack     int
-	Defense    int
-	MaxHP      int
-	SightRange int
+	Glyph         string
+	Name          string
+	ThreatCost    int
+	Attack        int
+	Defense       int
+	MaxHP         int
+	SightRange    int
+	SpecialKind   uint8 // 0=none 1=poison 2=weaken 3=lifedrain
+	SpecialChance int   // 0-100 percent
+	SpecialMag    int   // magnitude (poison dmg/turn, weaken atk penalty, lifedrain % * 10)
+	SpecialDur    int   // turns the status effect lasts
 }
 
 // ItemSpawnEntry describes one possible item spawn.
@@ -40,12 +44,14 @@ type Config struct {
 	MinRoomSize         int
 	RoomPadding         int
 	CorridorStyle       CorridorStyle
-	FloorNumber         int
-	EnemyBudget         int
-	ItemCount           int
-	EnemyTable          []EnemySpawnEntry
-	ItemTable           []ItemSpawnEntry
-	Rand                *rand.Rand
+	FloorNumber          int
+	EnemyBudget          int
+	ItemCount            int
+	EnemyTable           []EnemySpawnEntry
+	ItemTable            []ItemSpawnEntry
+	InscriptionTexts     []string // pool of wall-writing texts to draw from
+	InscriptionCount     int      // how many to place (typically 2-5)
+	Rand                 *rand.Rand
 }
 
 // bspLeaf is a node in the BSP tree.

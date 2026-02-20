@@ -9,10 +9,17 @@ type SpawnPoint struct {
 	X, Y int
 }
 
+// InscriptionSpawn describes one wall-writing to place.
+type InscriptionSpawn struct {
+	Text string
+	X, Y int
+}
+
 // PopulateResult is returned by Populate with entity spawn data.
 type PopulateResult struct {
-	Enemies []EnemySpawn
-	Items   []ItemSpawn
+	Enemies      []EnemySpawn
+	Items        []ItemSpawn
+	Inscriptions []InscriptionSpawn
 }
 
 // EnemySpawn describes one enemy to create.
@@ -63,6 +70,17 @@ func Populate(gmap *gamemap.GameMap, cfg *Config) PopulateResult {
 		entry := cfg.ItemTable[cfg.Rand.Intn(len(cfg.ItemTable))]
 		x, y := randomInRoom(room, cfg)
 		result.Items = append(result.Items, ItemSpawn{Entry: entry, X: x, Y: y})
+	}
+
+	// Place inscriptions, picking without replacement so no text repeats.
+	pool := make([]string, len(cfg.InscriptionTexts))
+	copy(pool, cfg.InscriptionTexts)
+	cfg.Rand.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
+	count := min(cfg.InscriptionCount, len(pool))
+	for i := 0; i < count; i++ {
+		room := rooms[cfg.Rand.Intn(len(rooms))]
+		x, y := randomInRoom(room, cfg)
+		result.Inscriptions = append(result.Inscriptions, InscriptionSpawn{Text: pool[i], X: x, Y: y})
 	}
 
 	return result

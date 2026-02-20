@@ -55,7 +55,8 @@ func HasEffect(w *ecs.World, id ecs.EntityID, kind component.EffectKind) bool {
 	return false
 }
 
-// GetAttackBonus returns the total attack bonus from active effects.
+// GetAttackBonus returns the net attack modifier from active effects
+// (EffectAttackBoost adds, EffectWeaken subtracts).
 func GetAttackBonus(w *ecs.World, id ecs.EntityID) int {
 	c := w.Get(id, component.CEffects)
 	if c == nil {
@@ -63,7 +64,40 @@ func GetAttackBonus(w *ecs.World, id ecs.EntityID) int {
 	}
 	total := 0
 	for _, e := range c.(component.Effects).Active {
-		if e.Kind == component.EffectAttackBoost {
+		switch e.Kind {
+		case component.EffectAttackBoost:
+			total += e.Magnitude
+		case component.EffectWeaken:
+			total -= e.Magnitude
+		}
+	}
+	return total
+}
+
+// GetDefenseBonus returns the net defense modifier from active EffectDefenseBoost effects.
+func GetDefenseBonus(w *ecs.World, id ecs.EntityID) int {
+	c := w.Get(id, component.CEffects)
+	if c == nil {
+		return 0
+	}
+	total := 0
+	for _, e := range c.(component.Effects).Active {
+		if e.Kind == component.EffectDefenseBoost {
+			total += e.Magnitude
+		}
+	}
+	return total
+}
+
+// GetPoisonDamage returns the total poison damage per turn from active effects.
+func GetPoisonDamage(w *ecs.World, id ecs.EntityID) int {
+	c := w.Get(id, component.CEffects)
+	if c == nil {
+		return 0
+	}
+	total := 0
+	for _, e := range c.(component.Effects).Active {
+		if e.Kind == component.EffectPoison {
 			total += e.Magnitude
 		}
 	}

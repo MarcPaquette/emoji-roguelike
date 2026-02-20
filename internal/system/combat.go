@@ -8,12 +8,14 @@ import (
 
 // AttackResult holds the outcome of one attack.
 type AttackResult struct {
-	Damage int
-	Killed bool
+	Damage        int
+	Killed        bool
+	SpecialApplied uint8 // 0=none 1=poison 2=weaken 3=lifedrain
+	DrainedAmount  int   // HP healed by lifedrain
 }
 
 // Attack resolves one attack from attacker against defender.
-// Damage formula: max(1, atk-def) + rand.Intn(3)
+// Damage formula: max(1, atk+bonus-def) + rand.Intn(3)
 // If defender HP drops to ≤ 0, it is destroyed and Killed=true.
 func Attack(w *ecs.World, rng *rand.Rand, attackerID, defenderID ecs.EntityID) AttackResult {
 	atkComp := w.Get(attackerID, component.CCombat)
@@ -24,10 +26,12 @@ func Attack(w *ecs.World, rng *rand.Rand, attackerID, defenderID ecs.EntityID) A
 		return AttackResult{}
 	}
 
-	atk := atkComp.(component.Combat).Attack
+	cbt := atkComp.(component.Combat)
 	def := defComp.(component.Combat).Defense
 	hp := hpComp.(component.Health)
 
+	atk := cbt.Attack + GetAttackBonus(w, attackerID)
+	def += GetDefenseBonus(w, defenderID)
 	base := atk - def
 	if base < 1 {
 		base = 1
@@ -42,5 +46,41 @@ func Attack(w *ecs.World, rng *rand.Rand, attackerID, defenderID ecs.EntityID) A
 		result.Killed = true
 		w.DestroyEntity(defenderID)
 	}
+
+	// Special attack: only triggered when defender is alive (not destroyed mid-attack
+	// for lifedrain/weaken; poison can still be applied even if lethal hit — rare edge case).
+	if cbt.SpecialKind != 0 && cbt.SpecialChance > 0 && rng.Intn(100) < cbt.SpecialChance {
+		result.SpecialApplied = cbt.SpecialKind
+		switch cbt.SpecialKind {
+		case 1: // poison
+			ApplyEffect(w, defenderID, component.ActiveEffect{
+				Kind:           component.EffectPoison,
+				Magnitude:      cbt.SpecialMag,
+				TurnsRemaining: cbt.SpecialDur,
+			})
+		case 2: // weaken
+			ApplyEffect(w, defenderID, component.ActiveEffect{
+				Kind:           component.EffectWeaken,
+				Magnitude:      cbt.SpecialMag,
+				TurnsRemaining: cbt.SpecialDur,
+			})
+		case 3: // lifedrain
+			drain := (dmg * cbt.SpecialMag) / 10
+			if drain < 1 {
+				drain = 1
+			}
+			result.DrainedAmount = drain
+			// Heal the attacker.
+			if atkHP := w.Get(attackerID, component.CHealth); atkHP != nil {
+				ah := atkHP.(component.Health)
+				ah.Current += drain
+				if ah.Current > ah.Max {
+					ah.Current = ah.Max
+				}
+				w.Add(attackerID, ah)
+			}
+		}
+	}
+
 	return result
 }

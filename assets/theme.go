@@ -18,9 +18,25 @@ const (
 	GlyphNullCloak    = "🫥"
 	GlyphTesseract    = "📦"
 	GlyphMemoryScroll = "📜"
+	GlyphSporeDraught  = "🍵" // floor 2+ — bioluminescent fungi brew
+	GlyphResonanceCoil = "🧲" // floor 3+ — resonance engine tech
+	GlyphPrismaticWard = "💫" // floor 5+ — prismatic defense field
+	GlyphVoidEssence   = "🌌" // floor 6+ — dimensional void extract
 	GlyphStairsDown   = "🔽"
 	GlyphStairsUp     = "🔼"
 	GlyphDoor         = "🚪"
+
+	// Floors 6-10 enemies
+	GlyphToxinSpore      = "🦠"
+	GlyphTideWraith      = "🐙"
+	GlyphOssifiedScholar = "🦴"
+	GlyphArchiveWarden   = "🗝️"
+	GlyphCinderWraith    = "🔥"
+	GlyphForgeGolem      = "🧱"
+	GlyphDreamStalker    = "🌙"
+	GlyphPsychicEcho     = "🧿"
+	GlyphCrystalRevenant = "🦂"
+	GlyphUnmaker         = "☄️"
 )
 
 // ClassDef defines a player class with stats and passive mechanics.
@@ -115,24 +131,37 @@ var Classes = []ClassDef{
 }
 
 // FloorNames maps floor number (1-indexed) to its lore name.
-var FloorNames = [6]string{
+var FloorNames = [11]string{
 	"",
 	"Crystalline Labs",
 	"Bioluminescent Warrens",
 	"Resonance Engine",
 	"Fractured Observatory",
 	"Apex Nexus",
+	"Membrane of Echoes",
+	"The Calcified Archive",
+	"Abyssal Foundry",
+	"The Dreaming Cortex",
+	"The Prismatic Heart",
+}
+
+// BossGlyphs maps floor number to the glyph of the floor boss (empty if no boss).
+// Victory on a boss floor requires killing this glyph.
+var BossGlyphs = [11]string{
+	"", "", "", "", "", "",
+	"", "", "", "",
+	GlyphUnmaker, // floor 10
 }
 
 // LoreOpening is shown when the game begins.
 const LoreOpening = `The Prismatic Spire — an ancient research station piercing
 the membrane between dimensions. Science and sorcery fused
 into something neither discipline can fully explain.
-You climb to reach the Apex Engine at the summit.
+You climb to reach the Prismatic Heart at the summit.
 Press any key to begin...`
 
 // Enemy tables per floor.
-var EnemyTables = [6][]generate.EnemySpawnEntry{
+var EnemyTables = [11][]generate.EnemySpawnEntry{
 	{}, // floor 0 unused
 	{ // Floor 1: Crystalline Labs
 		{Glyph: GlyphCrystalCrawl, Name: "Crystal Crawl", ThreatCost: 2, Attack: 3, Defense: 2, MaxHP: 8, SightRange: 5},
@@ -160,37 +189,126 @@ var EnemyTables = [6][]generate.EnemySpawnEntry{
 		{Glyph: GlyphVoidTendril, Name: "Void Tendril", ThreatCost: 4, Attack: 7, Defense: 0, MaxHP: 12, SightRange: 4},
 		{Glyph: GlyphApexWarden, Name: "Apex Warden", ThreatCost: 15, Attack: 12, Defense: 6, MaxHP: 60, SightRange: 10},
 	},
+	{ // Floor 6: Membrane of Echoes
+		{Glyph: GlyphToxinSpore, Name: "Toxin Spore", ThreatCost: 4, Attack: 6, Defense: 1, MaxHP: 14, SightRange: 6,
+			SpecialKind: 1, SpecialChance: 40, SpecialMag: 2, SpecialDur: 3},
+		{Glyph: GlyphTideWraith, Name: "Tide Wraith", ThreatCost: 4, Attack: 8, Defense: 0, MaxHP: 10, SightRange: 8},
+	},
+	{ // Floor 7: The Calcified Archive
+		{Glyph: GlyphOssifiedScholar, Name: "Ossified Scholar", ThreatCost: 5, Attack: 6, Defense: 4, MaxHP: 20, SightRange: 7,
+			SpecialKind: 2, SpecialChance: 35, SpecialMag: 2, SpecialDur: 4},
+		{Glyph: GlyphArchiveWarden, Name: "Archive Warden", ThreatCost: 5, Attack: 10, Defense: 3, MaxHP: 16, SightRange: 8},
+	},
+	{ // Floor 8: Abyssal Foundry
+		{Glyph: GlyphCinderWraith, Name: "Cinder Wraith", ThreatCost: 6, Attack: 9, Defense: 1, MaxHP: 18, SightRange: 7,
+			SpecialKind: 1, SpecialChance: 45, SpecialMag: 3, SpecialDur: 3},
+		{Glyph: GlyphForgeGolem, Name: "Forge Golem", ThreatCost: 8, Attack: 8, Defense: 7, MaxHP: 34, SightRange: 5,
+			SpecialKind: 3, SpecialChance: 50, SpecialMag: 5, SpecialDur: 0},
+	},
+	{ // Floor 9: The Dreaming Cortex
+		{Glyph: GlyphDreamStalker, Name: "Dream Stalker", ThreatCost: 7, Attack: 11, Defense: 2, MaxHP: 24, SightRange: 9,
+			SpecialKind: 2, SpecialChance: 40, SpecialMag: 3, SpecialDur: 5},
+		{Glyph: GlyphPsychicEcho, Name: "Psychic Echo", ThreatCost: 6, Attack: 9, Defense: 2, MaxHP: 20, SightRange: 8,
+			SpecialKind: 1, SpecialChance: 50, SpecialMag: 2, SpecialDur: 4},
+	},
+	{ // Floor 10: The Prismatic Heart
+		{Glyph: GlyphCrystalRevenant, Name: "Crystal Revenant", ThreatCost: 8, Attack: 12, Defense: 5, MaxHP: 28, SightRange: 8,
+			SpecialKind: 3, SpecialChance: 40, SpecialMag: 5, SpecialDur: 0},
+		{Glyph: GlyphUnmaker, Name: "The Unmaker", ThreatCost: 22, Attack: 18, Defense: 8, MaxHP: 90, SightRange: 12,
+			SpecialKind: 3, SpecialChance: 60, SpecialMag: 5, SpecialDur: 0},
+	},
 }
 
 // ItemTables per floor.
-var ItemTables = [6][]generate.ItemSpawnEntry{
+// New items are introduced thematically as the player descends.
+var ItemTables = [11][]generate.ItemSpawnEntry{
 	{},
-	{
+	{ // Floor 1 — Crystalline Labs
 		{Glyph: GlyphHyperflask, Name: "Hyperflask"},
 		{Glyph: GlyphMemoryScroll, Name: "Memory Scroll"},
 	},
-	{
+	{ // Floor 2 — Bioluminescent Warrens: introduces Spore Draught
 		{Glyph: GlyphHyperflask, Name: "Hyperflask"},
 		{Glyph: GlyphPrismShard, Name: "Prism Shard"},
 		{Glyph: GlyphMemoryScroll, Name: "Memory Scroll"},
+		{Glyph: GlyphSporeDraught, Name: "Spore Draught"},
 	},
-	{
+	{ // Floor 3 — Resonance Engine: introduces Resonance Coil
 		{Glyph: GlyphHyperflask, Name: "Hyperflask"},
 		{Glyph: GlyphPrismShard, Name: "Prism Shard"},
 		{Glyph: GlyphNullCloak, Name: "Null Cloak"},
 		{Glyph: GlyphTesseract, Name: "Tesseract Cube"},
+		{Glyph: GlyphSporeDraught, Name: "Spore Draught"},
+		{Glyph: GlyphResonanceCoil, Name: "Resonance Coil"},
 	},
-	{
+	{ // Floor 4 — Fractured Observatory
 		{Glyph: GlyphHyperflask, Name: "Hyperflask"},
 		{Glyph: GlyphPrismShard, Name: "Prism Shard"},
 		{Glyph: GlyphNullCloak, Name: "Null Cloak"},
 		{Glyph: GlyphTesseract, Name: "Tesseract Cube"},
+		{Glyph: GlyphSporeDraught, Name: "Spore Draught"},
+		{Glyph: GlyphResonanceCoil, Name: "Resonance Coil"},
 	},
-	{
+	{ // Floor 5 — Apex Nexus: introduces Prismatic Ward
 		{Glyph: GlyphHyperflask, Name: "Hyperflask"},
 		{Glyph: GlyphPrismShard, Name: "Prism Shard"},
 		{Glyph: GlyphNullCloak, Name: "Null Cloak"},
 		{Glyph: GlyphTesseract, Name: "Tesseract Cube"},
 		{Glyph: GlyphMemoryScroll, Name: "Memory Scroll"},
+		{Glyph: GlyphSporeDraught, Name: "Spore Draught"},
+		{Glyph: GlyphResonanceCoil, Name: "Resonance Coil"},
+		{Glyph: GlyphPrismaticWard, Name: "Prismatic Ward"},
+	},
+	{ // Floor 6 — Membrane of Echoes: introduces Void Essence
+		{Glyph: GlyphHyperflask, Name: "Hyperflask"},
+		{Glyph: GlyphPrismShard, Name: "Prism Shard"},
+		{Glyph: GlyphNullCloak, Name: "Null Cloak"},
+		{Glyph: GlyphTesseract, Name: "Tesseract Cube"},
+		{Glyph: GlyphSporeDraught, Name: "Spore Draught"},
+		{Glyph: GlyphResonanceCoil, Name: "Resonance Coil"},
+		{Glyph: GlyphPrismaticWard, Name: "Prismatic Ward"},
+		{Glyph: GlyphVoidEssence, Name: "Void Essence"},
+	},
+	{ // Floor 7 — The Calcified Archive
+		{Glyph: GlyphHyperflask, Name: "Hyperflask"},
+		{Glyph: GlyphPrismShard, Name: "Prism Shard"},
+		{Glyph: GlyphNullCloak, Name: "Null Cloak"},
+		{Glyph: GlyphTesseract, Name: "Tesseract Cube"},
+		{Glyph: GlyphMemoryScroll, Name: "Memory Scroll"},
+		{Glyph: GlyphSporeDraught, Name: "Spore Draught"},
+		{Glyph: GlyphResonanceCoil, Name: "Resonance Coil"},
+		{Glyph: GlyphPrismaticWard, Name: "Prismatic Ward"},
+		{Glyph: GlyphVoidEssence, Name: "Void Essence"},
+	},
+	{ // Floor 8 — Abyssal Foundry
+		{Glyph: GlyphHyperflask, Name: "Hyperflask"},
+		{Glyph: GlyphPrismShard, Name: "Prism Shard"},
+		{Glyph: GlyphNullCloak, Name: "Null Cloak"},
+		{Glyph: GlyphTesseract, Name: "Tesseract Cube"},
+		{Glyph: GlyphSporeDraught, Name: "Spore Draught"},
+		{Glyph: GlyphResonanceCoil, Name: "Resonance Coil"},
+		{Glyph: GlyphPrismaticWard, Name: "Prismatic Ward"},
+		{Glyph: GlyphVoidEssence, Name: "Void Essence"},
+	},
+	{ // Floor 9 — The Dreaming Cortex
+		{Glyph: GlyphHyperflask, Name: "Hyperflask"},
+		{Glyph: GlyphPrismShard, Name: "Prism Shard"},
+		{Glyph: GlyphNullCloak, Name: "Null Cloak"},
+		{Glyph: GlyphTesseract, Name: "Tesseract Cube"},
+		{Glyph: GlyphMemoryScroll, Name: "Memory Scroll"},
+		{Glyph: GlyphSporeDraught, Name: "Spore Draught"},
+		{Glyph: GlyphResonanceCoil, Name: "Resonance Coil"},
+		{Glyph: GlyphPrismaticWard, Name: "Prismatic Ward"},
+		{Glyph: GlyphVoidEssence, Name: "Void Essence"},
+	},
+	{ // Floor 10 — The Prismatic Heart
+		{Glyph: GlyphHyperflask, Name: "Hyperflask"},
+		{Glyph: GlyphPrismShard, Name: "Prism Shard"},
+		{Glyph: GlyphNullCloak, Name: "Null Cloak"},
+		{Glyph: GlyphTesseract, Name: "Tesseract Cube"},
+		{Glyph: GlyphSporeDraught, Name: "Spore Draught"},
+		{Glyph: GlyphResonanceCoil, Name: "Resonance Coil"},
+		{Glyph: GlyphPrismaticWard, Name: "Prismatic Ward"},
+		{Glyph: GlyphVoidEssence, Name: "Void Essence"},
 	},
 }

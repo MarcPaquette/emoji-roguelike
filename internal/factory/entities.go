@@ -39,7 +39,14 @@ func NewEnemy(w *ecs.World, entry generate.EnemySpawnEntry, x, y int) ecs.Entity
 		BGColor:     tcell.ColorDefault,
 		RenderOrder: 5,
 	})
-	w.Add(id, component.Combat{Attack: entry.Attack, Defense: entry.Defense})
+	w.Add(id, component.Combat{
+		Attack:        entry.Attack,
+		Defense:       entry.Defense,
+		SpecialKind:   entry.SpecialKind,
+		SpecialChance: entry.SpecialChance,
+		SpecialMag:    entry.SpecialMag,
+		SpecialDur:    entry.SpecialDur,
+	})
 	w.Add(id, component.AI{Behavior: component.BehaviorChase, SightRange: entry.SightRange})
 	w.Add(id, component.Effects{})
 	w.Add(id, component.TagBlocking{})
@@ -63,6 +70,21 @@ func NewItem(w *ecs.World, entry generate.ItemSpawnEntry, x, y int) ecs.EntityID
 // NewItemByGlyph creates an item entity using a raw glyph string (for class start items).
 func NewItemByGlyph(w *ecs.World, glyph string, x, y int) ecs.EntityID {
 	return NewItem(w, generate.ItemSpawnEntry{Glyph: glyph, Name: glyph}, x, y)
+}
+
+// NewInscription creates a wall-writing entity at (x, y).
+// The player reads it by stepping onto the tile.
+func NewInscription(w *ecs.World, text string, x, y int) ecs.EntityID {
+	id := w.CreateEntity()
+	w.Add(id, component.Position{X: x, Y: y})
+	w.Add(id, component.Renderable{
+		Glyph:       "📝",
+		FGColor:     tcell.ColorLightBlue,
+		BGColor:     tcell.ColorDefault,
+		RenderOrder: 1,
+	})
+	w.Add(id, component.Inscription{Text: text})
+	return id
 }
 
 // NewStairsDown creates a stairs-down entity.

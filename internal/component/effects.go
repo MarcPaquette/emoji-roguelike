@@ -11,6 +11,9 @@ const (
 	EffectAttackBoost EffectKind = iota
 	EffectInvisible
 	EffectRevealMap
+	EffectPoison
+	EffectWeaken
+	EffectDefenseBoost
 )
 
 // ActiveEffect is a timed status applied to an entity.
