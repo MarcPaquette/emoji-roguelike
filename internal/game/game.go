@@ -30,15 +30,17 @@ const (
 
 // RunLog records statistics gathered during one run.
 type RunLog struct {
-	Class            string
-	FloorsReached    int
-	TurnsPlayed      int
-	EnemiesKilled    map[string]int // glyph → kill count
-	ItemsUsed        map[string]int // glyph → use count
-	InscriptionsRead int
-	DamageDealt      int
-	DamageTaken      int
-	CauseOfDeath     string // last thing that hurt the player ("poison" or enemy glyph)
+	Timestamp        time.Time      `json:"timestamp"`
+	Victory          bool           `json:"victory"`
+	Class            string         `json:"class"`
+	FloorsReached    int            `json:"floors_reached"`
+	TurnsPlayed      int            `json:"turns_played"`
+	EnemiesKilled    map[string]int `json:"enemies_killed"` // glyph → kill count
+	ItemsUsed        map[string]int `json:"items_used"`     // glyph → use count
+	InscriptionsRead int            `json:"inscriptions_read"`
+	DamageDealt      int            `json:"damage_dealt"`
+	DamageTaken      int            `json:"damage_taken"`
+	CauseOfDeath     string         `json:"cause_of_death"` // last thing that hurt the player ("poison" or enemy glyph)
 }
 
 // Game is the top-level orchestrator.
@@ -215,6 +217,10 @@ func (g *Game) Run() {
 				g.processAction(action)
 			}
 		}
+
+		g.runLog.Victory = g.state == StateVictory
+		g.runLog.Timestamp = time.Now()
+		saveRunLog(g.runLog)
 
 		if !g.showEndScreen() {
 			return

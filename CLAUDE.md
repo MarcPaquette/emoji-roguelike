@@ -36,8 +36,9 @@ Pure data structs — zero logic. Each implements `Type() ComponentType`. The io
 | `CTagBlocking` | 9 | marker |
 | `CTagItem` | 10 | marker |
 | `CTagStairs` | 11 | marker |
+| `CInscription` | 12 | `Inscription{Text string}` |
 
-**Next available:** 12. Never reuse a number.
+**Next available:** 13. Never reuse a number.
 
 ### Dependency rule (strict)
 ```
@@ -75,6 +76,24 @@ Recursive shadowcasting, 8 octants. **Variable roles matter:** `dy = -j` is the 
 
 ### Game state machine (`internal/game/game.go`)
 States: `StatePlaying`, `StateInventory`, `StateDead`, `StateVictory`, `StateClassSelect`. The main loop in `Run()` skips rendering when not in `StatePlaying`. Floor transitions preserve the player's current HP (saved before `ecs.NewWorld()`, restored after `NewPlayer`).
+
+### Run logging (`internal/game/runlog.go`)
+Every completed run (death or victory) is appended as one JSON line to `~/.local/share/emoji-roguelike/runs.jsonl` (XDG: `$XDG_DATA_HOME/emoji-roguelike/runs.jsonl`). The `RunLog` struct (defined in `game.go`) is what gets serialised:
+
+```
+timestamp, victory, class, floors_reached, turns_played,
+enemies_killed{glyph→count}, items_used{glyph→count},
+inscriptions_read, damage_dealt, damage_taken, cause_of_death
+```
+
+`saveRunLog()` silently discards I/O errors so a full disk can never crash the game. Fields are set throughout gameplay; `Victory` and `Timestamp` are stamped in `Run()` just before `showEndScreen()`.
+
+Quick analysis with standard tools:
+
+```bash
+jq -r '.victory' ~/.local/share/emoji-roguelike/runs.jsonl | sort | uniq -c
+jq -r '.cause_of_death' ~/.local/share/emoji-roguelike/runs.jsonl | sort | uniq -c | sort -rn
+```
 
 ## Testing
 
