@@ -103,3 +103,18 @@ func GetPoisonDamage(w *ecs.World, id ecs.EntityID) int {
 	}
 	return total
 }
+
+// GetSelfBurnDamage returns the total self-burn damage per turn from active effects.
+func GetSelfBurnDamage(w *ecs.World, id ecs.EntityID) int {
+	c := w.Get(id, component.CEffects)
+	if c == nil {
+		return 0
+	}
+	total := 0
+	for _, e := range c.(component.Effects).Active {
+		if e.Kind == component.EffectSelfBurn {
+			total += e.Magnitude
+		}
+	}
+	return total
+}

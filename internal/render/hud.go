@@ -9,26 +9,29 @@ import (
 )
 
 // DrawHUD renders the status bar and message log at the bottom of the screen.
-// className is the selected class name shown at the start of the status line.
-func (r *Renderer) DrawHUD(w *ecs.World, playerID ecs.EntityID, floor int, className string, messages []string) {
+// bonusATK and bonusDEF are the combined effect+equipment bonus values computed by game.go.
+func (r *Renderer) DrawHUD(w *ecs.World, playerID ecs.EntityID, floor int, className string, messages []string, bonusATK, bonusDEF int) {
 	_, screenH := r.screen.Size()
 	hudY := screenH - 5
 
 	// Separator line.
 	r.drawHLine(hudY, tcell.ColorGray)
 
-	// HP bar.
+	// Row 1: HP / ATK / DEF / Floor
 	hpText := "HP: ?"
 	if c := w.Get(playerID, component.CHealth); c != nil {
 		hp := c.(component.Health)
 		hpText = fmt.Sprintf("HP: %d/%d", hp.Current, hp.Max)
 	}
 
-	// Combat stats.
 	atkText := ""
 	if c := w.Get(playerID, component.CCombat); c != nil {
 		cb := c.(component.Combat)
-		atkText = fmt.Sprintf("  ATK:%d DEF:%d", cb.Attack, cb.Defense)
+		if bonusATK != 0 {
+			atkText = fmt.Sprintf("  ATK:%d(%+d) DEF:%d(%+d)", cb.Attack, bonusATK, cb.Defense, bonusDEF)
+		} else {
+			atkText = fmt.Sprintf("  ATK:%d DEF:%d", cb.Attack, cb.Defense)
+		}
 	}
 
 	classText := ""
@@ -39,13 +42,42 @@ func (r *Renderer) DrawHUD(w *ecs.World, playerID ecs.EntityID, floor int, class
 	statusLine := classText + hpText + atkText + floorText
 	r.drawText(0, hudY+1, statusLine, tcell.StyleDefault.Foreground(tcell.ColorWhite))
 
-	// Message log (last 3 messages).
-	start := len(messages) - 3
+	// Row 2: equipped items
+	inv := component.Inventory{}
+	if c := w.Get(playerID, component.CInventory); c != nil {
+		inv = c.(component.Inventory)
+	}
+	headG := "--"
+	if !inv.Head.IsEmpty() {
+		headG = inv.Head.Glyph
+	}
+	bodyG := "--"
+	if !inv.Body.IsEmpty() {
+		bodyG = inv.Body.Glyph
+	}
+	feetG := "--"
+	if !inv.Feet.IsEmpty() {
+		feetG = inv.Feet.Glyph
+	}
+	weapG := "--"
+	if !inv.MainHand.IsEmpty() {
+		weapG = inv.MainHand.Glyph
+	}
+	offG := "--"
+	if !inv.OffHand.IsEmpty() {
+		offG = inv.OffHand.Glyph
+	}
+	equipLine := fmt.Sprintf("HEAD:%s  BODY:%s  FEET:%s  WEAP:%s  OFHND:%s  [i]nventory",
+		headG, bodyG, feetG, weapG, offG)
+	r.drawText(0, hudY+2, equipLine, tcell.StyleDefault.Foreground(tcell.ColorAqua))
+
+	// Rows 3-4: last 2 messages
+	start := len(messages) - 2
 	if start < 0 {
 		start = 0
 	}
 	for i, msg := range messages[start:] {
-		r.drawText(0, hudY+2+i, msg, tcell.StyleDefault.Foreground(tcell.ColorLightYellow))
+		r.drawText(0, hudY+3+i, msg, tcell.StyleDefault.Foreground(tcell.ColorLightYellow))
 	}
 
 	r.screen.Show()

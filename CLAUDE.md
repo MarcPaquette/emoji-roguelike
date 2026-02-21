@@ -30,15 +30,16 @@ Pure data structs — zero logic. Each implements `Type() ComponentType`. The io
 | `CRenderable` | 3 | `Renderable{Glyph, FGColor, BGColor, RenderOrder}` |
 | `CCombat` | 4 | `Combat{Attack, Defense int}` |
 | `CAI` | 5 | `AI{Behavior, SightRange}` |
-| `CInventory` | 6 | `Inventory{Items, Capacity}` |
+| `CInventory` | 6 | `Inventory{Backpack []Item, Capacity int, Head/Body/Feet/MainHand/OffHand Item}` |
 | `CEffects` | 7 | `Effects{Active []ActiveEffect}` |
 | `CTagPlayer` | 8 | marker |
 | `CTagBlocking` | 9 | marker |
 | `CTagItem` | 10 | marker |
 | `CTagStairs` | 11 | marker |
 | `CInscription` | 12 | `Inscription{Text string}` |
+| `CItem` | 13 | `CItemComp{Item}` — wraps `component.Item` value for floor entities |
 
-**Next available:** 13. Never reuse a number.
+**Next available:** 14. Never reuse a number.
 
 ### Dependency rule (strict)
 ```

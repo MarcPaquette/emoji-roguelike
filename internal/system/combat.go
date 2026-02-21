@@ -14,6 +14,28 @@ type AttackResult struct {
 	DrainedAmount  int   // HP healed by lifedrain
 }
 
+// equipATKBonus returns total ATK bonus from equipped items (players only).
+func equipATKBonus(w *ecs.World, id ecs.EntityID) int {
+	c := w.Get(id, component.CInventory)
+	if c == nil {
+		return 0
+	}
+	inv := c.(component.Inventory)
+	return inv.MainHand.BonusATK + inv.OffHand.BonusATK +
+		inv.Head.BonusATK + inv.Body.BonusATK + inv.Feet.BonusATK
+}
+
+// equipDEFBonus returns total DEF bonus from equipped items (players only).
+func equipDEFBonus(w *ecs.World, id ecs.EntityID) int {
+	c := w.Get(id, component.CInventory)
+	if c == nil {
+		return 0
+	}
+	inv := c.(component.Inventory)
+	return inv.MainHand.BonusDEF + inv.OffHand.BonusDEF +
+		inv.Head.BonusDEF + inv.Body.BonusDEF + inv.Feet.BonusDEF
+}
+
 // Attack resolves one attack from attacker against defender.
 // Damage formula: max(1, atk+bonus-def) + rand.Intn(3)
 // If defender HP drops to ≤ 0, it is destroyed and Killed=true.
@@ -30,8 +52,8 @@ func Attack(w *ecs.World, rng *rand.Rand, attackerID, defenderID ecs.EntityID) A
 	def := defComp.(component.Combat).Defense
 	hp := hpComp.(component.Health)
 
-	atk := cbt.Attack + GetAttackBonus(w, attackerID)
-	def += GetDefenseBonus(w, defenderID)
+	atk := cbt.Attack + GetAttackBonus(w, attackerID) + equipATKBonus(w, attackerID)
+	def += GetDefenseBonus(w, defenderID) + equipDEFBonus(w, defenderID)
 	base := atk - def
 	if base < 1 {
 		base = 1

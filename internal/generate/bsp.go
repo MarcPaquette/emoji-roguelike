@@ -35,6 +35,17 @@ type ItemSpawnEntry struct {
 	Name  string
 }
 
+// EquipSpawnEntry describes one possible equipment spawn.
+// Slot uses the same numeric values as component.ItemSlot to avoid a circular import.
+type EquipSpawnEntry struct {
+	Glyph                        string
+	Name                         string
+	Slot                         uint8 // 1=Head 2=Body 3=Feet 4=OneHand 5=TwoHand 6=OffHand
+	BaseATK, BaseDEF, BaseMaxHP  int
+	ATKScale, DEFScale, HPScale  int
+	MinFloor                     int
+}
+
 // Config drives procedural generation for one floor.
 type Config struct {
 	MapWidth, MapHeight int
@@ -47,8 +58,10 @@ type Config struct {
 	FloorNumber          int
 	EnemyBudget          int
 	ItemCount            int
+	EquipCount           int
 	EnemyTable           []EnemySpawnEntry
 	ItemTable            []ItemSpawnEntry
+	EquipTable           []EquipSpawnEntry
 	InscriptionTexts     []string // pool of wall-writing texts to draw from
 	InscriptionCount     int      // how many to place (typically 2-5)
 	Rand                 *rand.Rand

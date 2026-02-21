@@ -28,12 +28,42 @@ func levelConfig(floor int, rng *rand.Rand) *generate.Config {
 		FloorNumber:   floor,
 		EnemyBudget:   lerpi(5, 55, t),
 		ItemCount:     lerpi(3, 8, t),
+		EquipCount:    lerpi(1, 3, t),
 		EnemyTable:       assets.EnemyTables[floor],
-		ItemTable:        assets.ItemTables[floor],
+		ItemTable:        itemTableForFloor(floor),
+		EquipTable:       assets.EquipTablesForFloor(floor),
 		InscriptionTexts: assets.WallWritings[floor],
 		InscriptionCount: 2 + rng.Intn(4), // 2–5 per floor
 		Rand:             rng,
 	}
+}
+
+// itemTableForFloor returns the consumable item table for a given floor,
+// including any new consumables unlocked at that floor.
+func itemTableForFloor(floor int) []generate.ItemSpawnEntry {
+	base := assets.ItemTables[floor]
+	var extra []generate.ItemSpawnEntry
+
+	if floor >= 3 {
+		extra = append(extra, generate.ItemSpawnEntry{Glyph: assets.GlyphResonanceBurst, Name: "Resonance Burst"})
+	}
+	if floor >= 5 {
+		extra = append(extra, generate.ItemSpawnEntry{Glyph: assets.GlyphNanoSyringe, Name: "Nano-Syringe"})
+	}
+	if floor >= 6 {
+		extra = append(extra, generate.ItemSpawnEntry{Glyph: assets.GlyphPhaseRod, Name: "Phase Rod"})
+	}
+	if floor >= 8 {
+		extra = append(extra, generate.ItemSpawnEntry{Glyph: assets.GlyphApexCore, Name: "Apex Core"})
+	}
+
+	if len(extra) == 0 {
+		return base
+	}
+	combined := make([]generate.ItemSpawnEntry, len(base)+len(extra))
+	copy(combined, base)
+	copy(combined[len(base):], extra)
+	return combined
 }
 
 func lerpi(a, b int, t float64) int {

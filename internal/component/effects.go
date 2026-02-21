@@ -14,6 +14,7 @@ const (
 	EffectPoison
 	EffectWeaken
 	EffectDefenseBoost
+	EffectSelfBurn // 6 — player burns themselves (e.g. Resonance Burst side-effect)
 )
 
 // ActiveEffect is a timed status applied to an entity.

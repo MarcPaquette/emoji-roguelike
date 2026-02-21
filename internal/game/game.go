@@ -56,6 +56,7 @@ type Game struct {
 	messages          []string
 	selectedClass     assets.ClassDef
 	fovRadius         int
+	baseMaxHP         int // base MaxHP from class, used by recalcPlayerMaxHP
 	discoveredEnemies map[string]bool
 	runLog            RunLog
 }
@@ -87,6 +88,7 @@ func (g *Game) resetForRun() {
 	g.messages = nil
 	g.world = nil
 	g.gmap = nil
+	g.baseMaxHP = 0
 	g.discoveredEnemies = make(map[string]bool)
 	g.runLog = RunLog{
 		EnemiesKilled: make(map[string]int),
@@ -95,14 +97,24 @@ func (g *Game) resetForRun() {
 }
 
 // loadFloor generates and populates the given floor.
-// On transitions (floor > 1) the player's current HP is preserved.
+// On transitions (floor > 1) the player's current HP and inventory are preserved.
 func (g *Game) loadFloor(floor int) {
-	// Preserve HP across floor transitions.
+	// Preserve HP and inventory across floor transitions.
 	savedHP := -1
+	var savedInv *component.Inventory
 	if g.world != nil && g.playerID != ecs.NilEntity {
 		if hpComp := g.world.Get(g.playerID, component.CHealth); hpComp != nil {
 			savedHP = hpComp.(component.Health).Current
 		}
+		if invComp := g.world.Get(g.playerID, component.CInventory); invComp != nil {
+			inv := invComp.(component.Inventory)
+			savedInv = &inv
+		}
+	}
+
+	// Set base MaxHP from class on the first floor.
+	if floor == 1 {
+		g.baseMaxHP = g.selectedClass.MaxHP
 	}
 
 	g.floor = floor
@@ -115,13 +127,16 @@ func (g *Game) loadFloor(floor int) {
 	gmap, px, py := generate.Generate(cfg)
 	g.gmap = gmap
 
-	// Populate enemies, items, and inscriptions.
+	// Populate enemies, items, inscriptions, and equipment.
 	pop := generate.Populate(gmap, cfg)
 	for _, es := range pop.Enemies {
 		factory.NewEnemy(g.world, es.Entry, es.X, es.Y)
 	}
 	for _, is := range pop.Items {
 		factory.NewItem(g.world, is.Entry, is.X, is.Y)
+	}
+	for _, eq := range pop.Equipment {
+		factory.NewEquipItem(g.world, eq.Entry, floor, g.rng, eq.X, eq.Y)
 	}
 	for _, ins := range pop.Inscriptions {
 		factory.NewInscription(g.world, ins.Text, ins.X, ins.Y)
@@ -130,13 +145,19 @@ func (g *Game) loadFloor(floor int) {
 	// Create player using the selected class definition.
 	g.playerID = factory.NewPlayer(g.world, px, py, g.selectedClass)
 
-	// Restore HP from previous floor (capped at class max).
+	// Restore HP from previous floor (capped at max).
 	if savedHP > 0 && floor > 1 {
 		hp := g.world.Get(g.playerID, component.CHealth).(component.Health)
 		if savedHP < hp.Max {
 			hp.Current = savedHP
 		}
 		g.world.Add(g.playerID, hp)
+	}
+
+	// Restore inventory from previous floor.
+	if savedInv != nil && floor > 1 {
+		g.world.Add(g.playerID, *savedInv)
+		g.recalcPlayerMaxHP()
 	}
 
 	// Apply class passive effects on floor 1 only.
@@ -202,7 +223,11 @@ func (g *Game) Run() {
 			playerPos := g.playerPosition()
 			g.renderer.CenterOn(playerPos.X, playerPos.Y)
 			g.renderer.DrawFrame(g.world, g.gmap, g.playerID)
-			g.renderer.DrawHUD(g.world, g.playerID, g.floor, g.selectedClass.Name, g.messages)
+			// Compute equipment + effect bonuses for HUD display.
+			equipATK, equipDEF := g.equipBonuses()
+			bonusATK := system.GetAttackBonus(g.world, g.playerID) + equipATK
+			bonusDEF := system.GetDefenseBonus(g.world, g.playerID) + equipDEF
+			g.renderer.DrawHUD(g.world, g.playerID, g.floor, g.selectedClass.Name, g.messages, bonusATK, bonusDEF)
 
 			ev := g.screen.PollEvent()
 			switch ev := ev.(type) {
@@ -264,6 +289,9 @@ func (g *Game) processAction(action Action) {
 	case ActionPickup:
 		g.tryPickup()
 		turnUsed = true
+
+	case ActionInventory:
+		turnUsed = g.runInventoryScreen()
 
 	default:
 		dx, dy := actionToDelta(action)
@@ -328,8 +356,10 @@ func (g *Game) processAction(action Action) {
 }
 
 func (g *Game) applyPoisonDamage() {
-	dmg := system.GetPoisonDamage(g.world, g.playerID)
-	if dmg <= 0 {
+	poisonDmg := system.GetPoisonDamage(g.world, g.playerID)
+	burnDmg := system.GetSelfBurnDamage(g.world, g.playerID)
+	totalDmg := poisonDmg + burnDmg
+	if totalDmg <= 0 {
 		return
 	}
 	hp := g.world.Get(g.playerID, component.CHealth)
@@ -337,11 +367,19 @@ func (g *Game) applyPoisonDamage() {
 		return
 	}
 	h := hp.(component.Health)
-	h.Current -= dmg
+	h.Current -= totalDmg
 	g.world.Add(g.playerID, h)
-	g.runLog.DamageTaken += dmg
-	g.runLog.CauseOfDeath = "poison"
-	g.addMessage(fmt.Sprintf("Poison burns through you! (%d damage)", dmg))
+	g.runLog.DamageTaken += totalDmg
+	if poisonDmg > 0 {
+		g.runLog.CauseOfDeath = "poison"
+		g.addMessage(fmt.Sprintf("Poison burns through you! (%d damage)", poisonDmg))
+	}
+	if burnDmg > 0 {
+		if g.runLog.CauseOfDeath == "" {
+			g.runLog.CauseOfDeath = "self-burn"
+		}
+		g.addMessage(fmt.Sprintf("The resonance burns you! (%d damage)", burnDmg))
+	}
 }
 
 func (g *Game) restorePlayerHP(n int) {
@@ -363,33 +401,44 @@ func (g *Game) tryPickup() {
 	for _, itemID := range items {
 		ipos := g.world.Get(itemID, component.CPosition).(component.Position)
 		if ipos.X == pos.X && ipos.Y == pos.Y {
-			rend := g.world.Get(itemID, component.CRenderable)
-			name := "item"
-			if rend != nil {
-				name = rend.(component.Renderable).Glyph
+			// Read the item data from CItemComp.
+			itemComp := g.world.Get(itemID, component.CItem)
+			if itemComp == nil {
+				g.addMessage("Strange item — cannot pick up.")
+				return
 			}
-			g.applyItem(itemID)
+			item := itemComp.(component.CItemComp).Item
+
+			// Check backpack capacity.
+			invComp := g.world.Get(g.playerID, component.CInventory)
+			if invComp == nil {
+				return
+			}
+			inv := invComp.(component.Inventory)
+			if len(inv.Backpack) >= inv.Capacity {
+				g.addMessage("Backpack full! Drop something first.")
+				return
+			}
+
+			// Add to backpack and destroy floor entity.
+			inv.Backpack = append(inv.Backpack, item)
+			g.world.Add(g.playerID, inv)
 			g.world.DestroyEntity(itemID)
-			g.addMessage(fmt.Sprintf("You pick up %s.", name))
+			g.addMessage(fmt.Sprintf("You pick up %s. [i] to open inventory.", item.Name))
 			return
 		}
 	}
 	g.addMessage("Nothing to pick up here.")
 }
 
-// applyItem immediately uses an item (all items are consumable).
-func (g *Game) applyItem(itemID ecs.EntityID) {
-	rend := g.world.Get(itemID, component.CRenderable)
-	if rend == nil {
-		return
-	}
-	glyph := rend.(component.Renderable).Glyph
+// applyConsumable uses a consumable item from inventory (called by inventory screen).
+func (g *Game) applyConsumable(item component.Item) {
+	glyph := item.Glyph
 	g.runLog.ItemsUsed[glyph]++
 	switch glyph {
 	case assets.GlyphHyperflask:
-		restore := 15
-		g.restorePlayerHP(restore)
-		g.addMessage(fmt.Sprintf("The Hyperflask restores %d HP.", restore))
+		g.restorePlayerHP(15)
+		g.addMessage("The Hyperflask restores 15 HP.")
 
 	case assets.GlyphPrismShard:
 		system.ApplyEffect(g.world, g.playerID, component.ActiveEffect{
@@ -418,9 +467,8 @@ func (g *Game) applyItem(itemID ecs.EntityID) {
 		g.addMessage("The Memory Scroll reveals the entire floor.")
 
 	case assets.GlyphSporeDraught:
-		restore := 20
-		g.restorePlayerHP(restore)
-		g.addMessage(fmt.Sprintf("The Spore Draught mends your wounds with living mycelium. (+%d HP)", restore))
+		g.restorePlayerHP(20)
+		g.addMessage("The Spore Draught mends your wounds with living mycelium. (+20 HP)")
 
 	case assets.GlyphResonanceCoil:
 		system.ApplyEffect(g.world, g.playerID, component.ActiveEffect{
@@ -439,10 +487,72 @@ func (g *Game) applyItem(itemID ecs.EntityID) {
 			Kind: component.EffectInvisible, Magnitude: 1, TurnsRemaining: 20,
 		})
 		g.addMessage("The Void Essence erases you from local spacetime. (Invisible, 20 turns)")
+
+	case assets.GlyphNanoSyringe:
+		g.restorePlayerHP(30)
+		g.addMessage("The Nano-Syringe floods your bloodstream with healing agents. (+30 HP)")
+
+	case assets.GlyphResonanceBurst:
+		system.ApplyEffect(g.world, g.playerID, component.ActiveEffect{
+			Kind: component.EffectAttackBoost, Magnitude: 8, TurnsRemaining: 8,
+		})
+		system.ApplyEffect(g.world, g.playerID, component.ActiveEffect{
+			Kind: component.EffectSelfBurn, Magnitude: 2, TurnsRemaining: 8,
+		})
+		g.addMessage("Resonance Burst! (+8 ATK for 8 turns, but -2 HP/turn burn)")
+
+	case assets.GlyphPhaseRod:
+		system.ApplyEffect(g.world, g.playerID, component.ActiveEffect{
+			Kind: component.EffectDefenseBoost, Magnitude: 6, TurnsRemaining: 15,
+		})
+		g.addMessage("The Phase Rod envelops you in prismatic shielding. (+6 DEF, 15 turns)")
+
+	case assets.GlyphApexCore:
+		g.baseMaxHP += 3
+		hp := g.world.Get(g.playerID, component.CHealth).(component.Health)
+		hp.Max += 3
+		hp.Current += 3
+		g.world.Add(g.playerID, hp)
+		g.addMessage("The Apex Core integrates into your biology. (+3 MaxHP permanently)")
 	}
 }
 
 // checkInscription displays any wall-writing at the player's current position.
+// equipBonuses returns the total ATK and DEF bonus from all equipped items.
+func (g *Game) equipBonuses() (atk, def int) {
+	c := g.world.Get(g.playerID, component.CInventory)
+	if c == nil {
+		return 0, 0
+	}
+	inv := c.(component.Inventory)
+	atk = inv.MainHand.BonusATK + inv.OffHand.BonusATK +
+		inv.Head.BonusATK + inv.Body.BonusATK + inv.Feet.BonusATK
+	def = inv.MainHand.BonusDEF + inv.OffHand.BonusDEF +
+		inv.Head.BonusDEF + inv.Body.BonusDEF + inv.Feet.BonusDEF
+	return atk, def
+}
+
+// recalcPlayerMaxHP recalculates the player's MaxHP from baseMaxHP + equipment bonuses.
+func (g *Game) recalcPlayerMaxHP() {
+	invComp := g.world.Get(g.playerID, component.CInventory)
+	if invComp == nil {
+		return
+	}
+	inv := invComp.(component.Inventory)
+	bonus := inv.Head.BonusMaxHP + inv.Body.BonusMaxHP + inv.Feet.BonusMaxHP +
+		inv.MainHand.BonusMaxHP + inv.OffHand.BonusMaxHP
+	hpComp := g.world.Get(g.playerID, component.CHealth)
+	if hpComp == nil {
+		return
+	}
+	hp := hpComp.(component.Health)
+	hp.Max = g.baseMaxHP + bonus
+	if hp.Current > hp.Max {
+		hp.Current = hp.Max
+	}
+	g.world.Add(g.playerID, hp)
+}
+
 func (g *Game) checkInscription() {
 	pos := g.playerPosition()
 	for _, id := range g.world.Query(component.CInscription, component.CPosition) {

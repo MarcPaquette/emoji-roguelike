@@ -26,6 +26,35 @@ const (
 	GlyphStairsUp     = "🔼"
 	GlyphDoor         = "🚪"
 
+	// Equipment — head
+	GlyphCrystalHelm      = "🪖"
+	GlyphVoidCrown        = "🎩"
+	GlyphResonanceCowl    = "🪬"
+	// Equipment — body
+	GlyphFrostWeave       = "🧥"
+	GlyphPrismaticPlate   = "🪤"
+	GlyphCalcifiedCarapace = "🥼"
+	// Equipment — feet
+	GlyphFluxTreads       = "👟"
+	GlyphForgeBoots       = "🥾"
+	GlyphMembraneWalkers  = "🩴"
+	// Equipment — one-hand weapons
+	GlyphShardBlade       = "⚔️"
+	GlyphTendrilWhip      = "🔱"
+	GlyphEchoCutter       = "🪃"
+	// Equipment — two-hand weapons
+	GlyphResonanceMaul    = "🪚"
+	GlyphAbyssalCleaver   = "🗡️"
+	// Equipment — off-hand
+	GlyphPhaseMirror      = "🪩"
+	GlyphPowerCell        = "🔋"
+
+	// New consumables
+	GlyphNanoSyringe    = "💉" // floor 5+ — nano-medicine
+	GlyphResonanceBurst = "🧨" // floor 3+ — overcharge
+	GlyphPhaseRod       = "🪄" // floor 6+ — prismatic defense
+	GlyphApexCore       = "🫀" // floor 8+ — permanent HP upgrade
+
 	// Floors 6-10 enemies
 	GlyphToxinSpore      = "🦠"
 	GlyphTideWraith      = "🐙"

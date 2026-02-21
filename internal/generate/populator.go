@@ -19,6 +19,7 @@ type InscriptionSpawn struct {
 type PopulateResult struct {
 	Enemies      []EnemySpawn
 	Items        []ItemSpawn
+	Equipment    []EquipSpawn
 	Inscriptions []InscriptionSpawn
 }
 
@@ -31,6 +32,12 @@ type EnemySpawn struct {
 // ItemSpawn describes one item to create.
 type ItemSpawn struct {
 	Entry ItemSpawnEntry
+	X, Y  int
+}
+
+// EquipSpawn describes one equipment item to create.
+type EquipSpawn struct {
+	Entry EquipSpawnEntry
 	X, Y  int
 }
 
@@ -70,6 +77,14 @@ func Populate(gmap *gamemap.GameMap, cfg *Config) PopulateResult {
 		entry := cfg.ItemTable[cfg.Rand.Intn(len(cfg.ItemTable))]
 		x, y := randomInRoom(room, cfg)
 		result.Items = append(result.Items, ItemSpawn{Entry: entry, X: x, Y: y})
+	}
+
+	// Place equipment items in random rooms.
+	for i := 0; i < cfg.EquipCount && len(cfg.EquipTable) > 0; i++ {
+		room := rooms[cfg.Rand.Intn(len(rooms))]
+		entry := cfg.EquipTable[cfg.Rand.Intn(len(cfg.EquipTable))]
+		x, y := randomInRoom(room, cfg)
+		result.Equipment = append(result.Equipment, EquipSpawn{Entry: entry, X: x, Y: y})
 	}
 
 	// Place inscriptions, picking without replacement so no text repeats.
