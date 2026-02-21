@@ -245,6 +245,9 @@ func (g *Game) Run() {
 
 		g.runLog.Victory = g.state == StateVictory
 		g.runLog.Timestamp = time.Now()
+		if g.runLog.Victory {
+			g.runLog.CauseOfDeath = ""
+		}
 		saveRunLog(g.runLog)
 
 		if !g.showEndScreen() {
