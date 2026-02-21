@@ -762,7 +762,7 @@ func (g *Game) showEndScreen() bool {
 	green := tcell.StyleDefault.Foreground(tcell.ColorGreen)
 	red   := tcell.StyleDefault.Foreground(tcell.ColorRed)
 
-	for {
+	draw := func() {
 		g.screen.Clear()
 		sw, _ := g.screen.Size()
 
@@ -771,7 +771,6 @@ func (g *Game) showEndScreen() bool {
 				g.screen.SetContent(x, y, '─', nil, gray)
 			}
 		}
-		// label prints a left-aligned key at column 2 and value at column 22.
 		label := func(y int, l, v string) {
 			g.putText(2, y, l, dim)
 			g.putText(22, y, v, white)
@@ -780,7 +779,6 @@ func (g *Game) showEndScreen() bool {
 		y := 1
 		sep(y); y += 2
 
-		// Title + outcome badge.
 		if won {
 			g.putText(2, y, "THE PRISMATIC HEART IS SILENT", gold)
 			badge := "[VICTORY]"
@@ -792,19 +790,16 @@ func (g *Game) showEndScreen() bool {
 		}
 		y += 2
 
-		// Core stats.
 		label(y, "Class:", g.runLog.Class); y++
 		label(y, "Floor Reached:", floorName); y++
 		label(y, "Turns Survived:", fmt.Sprintf("%d", g.runLog.TurnsPlayed)); y += 2
 
-		// Kill count + breakdown.
 		label(y, "Enemies Slain:", fmt.Sprintf("%d", totalKills)); y++
 		if len(kills) > 0 {
 			breakdown := ""
 			for _, e := range kills {
 				breakdown += fmt.Sprintf("%s×%d  ", e.glyph, e.count)
 			}
-			// Trim to fit screen (rune-based, emoji count as 1 here but render wider).
 			maxRunes := sw - 6
 			runes := []rune(breakdown)
 			if len(runes) > maxRunes {
@@ -821,7 +816,6 @@ func (g *Game) showEndScreen() bool {
 		label(y, "Damage Dealt:", fmt.Sprintf("%d", g.runLog.DamageDealt)); y++
 		label(y, "Damage Taken:", fmt.Sprintf("%d", g.runLog.DamageTaken)); y += 2
 
-		// Outcome line.
 		if won {
 			g.putText(2, y, "The Unmaker is unmade. The Spire falls silent.", green)
 		} else if g.runLog.CauseOfDeath == "poison" {
@@ -835,14 +829,17 @@ func (g *Game) showEndScreen() bool {
 
 		g.putText(2, y, "[R] Try Again", green)
 		g.putText(18, y, "[Q] Quit", red)
+	}
 
+	for {
+		draw()
 		g.screen.Show()
 
 		ev := g.screen.PollEvent()
 		switch ev := ev.(type) {
 		case *tcell.EventResize:
 			g.screen.Sync()
-			continue // redraw on resize
+			continue
 		case *tcell.EventKey:
 			switch ev.Key() {
 			case tcell.KeyRune:
@@ -850,10 +847,14 @@ func (g *Game) showEndScreen() bool {
 				case 'r', 'R':
 					return true
 				case 'q', 'Q':
-					return false
+					if g.confirmQuit(draw) {
+						return false
+					}
 				}
 			case tcell.KeyEscape:
-				return false
+				if g.confirmQuit(draw) {
+					return false
+				}
 			}
 		}
 	}
