@@ -265,6 +265,7 @@ func Generate(cfg *Config) (*gamemap.GameMap, int, int) {
 
 	root.createRooms(gmap, cfg)
 	root.connectChildren(gmap, cfg)
+	PlaceDoors(gmap)
 
 	// Player starts in center of first room.
 	px, py := 1, 1
@@ -280,6 +281,45 @@ func Generate(cfg *Config) (*gamemap.GameMap, int, int) {
 	}
 
 	return gmap, px, py
+}
+
+// PlaceDoors scans every room's outer perimeter and places a closed door
+// wherever a corridor has carved through the room boundary.
+func PlaceDoors(gmap *gamemap.GameMap) {
+	for _, room := range gmap.Rooms {
+		// Top edge (y = Y1-1)
+		if room.Y1-1 >= 0 {
+			for x := room.X1; x <= room.X2; x++ {
+				if gmap.At(x, room.Y1-1).Kind == gamemap.TileFloor {
+					gmap.Set(x, room.Y1-1, gamemap.MakeDoor())
+				}
+			}
+		}
+		// Bottom edge (y = Y2+1)
+		if room.Y2+1 < gmap.Height {
+			for x := room.X1; x <= room.X2; x++ {
+				if gmap.At(x, room.Y2+1).Kind == gamemap.TileFloor {
+					gmap.Set(x, room.Y2+1, gamemap.MakeDoor())
+				}
+			}
+		}
+		// Left edge (x = X1-1)
+		if room.X1-1 >= 0 {
+			for y := room.Y1; y <= room.Y2; y++ {
+				if gmap.At(room.X1-1, y).Kind == gamemap.TileFloor {
+					gmap.Set(room.X1-1, y, gamemap.MakeDoor())
+				}
+			}
+		}
+		// Right edge (x = X2+1)
+		if room.X2+1 < gmap.Width {
+			for y := room.Y1; y <= room.Y2; y++ {
+				if gmap.At(room.X2+1, y).Kind == gamemap.TileFloor {
+					gmap.Set(room.X2+1, y, gamemap.MakeDoor())
+				}
+			}
+		}
+	}
 }
 
 func max(a, b int) int {

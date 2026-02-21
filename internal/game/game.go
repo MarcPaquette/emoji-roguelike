@@ -370,7 +370,14 @@ func (g *Game) processAction(action Action) {
 				}
 				turnUsed = true
 			case system.MoveBlocked:
-				// no message for walking into walls
+				pos := g.playerPosition()
+				tx, ty := pos.X+dx, pos.Y+dy
+				if g.gmap.InBounds(tx, ty) && g.gmap.At(tx, ty).Kind == gamemap.TileDoor {
+					g.gmap.Set(tx, ty, gamemap.MakeFloor())
+					system.UpdateFOV(g.world, g.gmap, g.playerID, g.fovRadius)
+					g.addMessage("You open the door.")
+					turnUsed = true
+				}
 			}
 		}
 	}

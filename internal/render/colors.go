@@ -50,9 +50,9 @@ var TileThemes = [11]FloorTiles{
 		DimFloor: "🔲",
 	},
 	{
-		// Floor 6 — Membrane of Echoes: dimensional fluid
-		Wall:     "🌊",
-		Floor:    "🔵",
+		// Floor 6 — Membrane of Echoes: bubble membrane walls, tidal fluid floor
+		Wall:     "🫧",
+		Floor:    "🌊",
 		DimWall:  "🌑",
 		DimFloor: "🔲",
 	},
@@ -64,22 +64,22 @@ var TileThemes = [11]FloorTiles{
 		DimFloor: "🔲",
 	},
 	{
-		// Floor 8 — Abyssal Foundry: hellforge, primordial energy
+		// Floor 8 — Abyssal Foundry: volcanic walls, alembic forge-vessel floor
 		Wall:     "🌋",
-		Floor:    "🟠",
+		Floor:    "⚗️",
 		DimWall:  "🌑",
 		DimFloor: "🔲",
 	},
 	{
-		// Floor 9 — The Dreaming Cortex: psionic landscape
+		// Floor 9 — The Dreaming Cortex: thought-bubble walls, shooting-star psionic floor
 		Wall:     "💭",
-		Floor:    "⭐",
+		Floor:    "🌠",
 		DimWall:  "🌑",
 		DimFloor: "🔲",
 	},
 	{
-		// Floor 10 — The Prismatic Heart: crystallised consciousness
-		Wall:     "🔷",
+		// Floor 10 — The Prismatic Heart: rainbow prismatic walls, glowing crystalline floor
+		Wall:     "🌈",
 		Floor:    "🌟",
 		DimWall:  "🌑",
 		DimFloor: "🔲",

@@ -104,6 +104,14 @@ func (g *Game) runInventoryScreen() bool {
 					g.world.Add(g.playerID, inv)
 					g.recalcPlayerMaxHP()
 					return turnUsed
+				default:
+					if ev.Rune() >= '1' && ev.Rune() <= '9' {
+						idx := int(ev.Rune()-'0') - 1 // convert to 0-based
+						if idx < len(inv.Backpack) {
+							panel = 0
+							cursor = idx
+						}
+					}
 				}
 			}
 		}
@@ -417,7 +425,7 @@ func (g *Game) drawInventoryScreen(inv component.Inventory, panel, cursor int, s
 			tag = " [use]"
 		}
 		bonuses := formatBonuses(item)
-		line := fmt.Sprintf("%s[%d] %s %s%s%s", pfx, i, item.Glyph, item.Name, bonuses, tag)
+		line := fmt.Sprintf("%s[%d] %s %s%s%s", pfx, i+1, item.Glyph, item.Name, bonuses, tag)
 		g.putText(mid, row, line, style)
 	}
 	if len(inv.Backpack) == 0 {

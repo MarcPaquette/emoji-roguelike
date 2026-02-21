@@ -30,9 +30,9 @@ func MakeFloor() Tile {
 	return Tile{Kind: TileFloor, Walkable: true, Transparent: true}
 }
 
-// MakeDoor returns a door tile (treated as floor for now).
+// MakeDoor returns a closed door tile (blocks movement and sight).
 func MakeDoor() Tile {
-	return Tile{Kind: TileDoor, Walkable: true, Transparent: false}
+	return Tile{Kind: TileDoor, Walkable: false, Transparent: false}
 }
 
 // MakeStairsDown returns a downward staircase tile.
