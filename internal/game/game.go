@@ -237,7 +237,10 @@ func (g *Game) Run() {
 			case *tcell.EventKey:
 				action := keyToAction(ev)
 				if action == ActionQuit {
-					return
+					if g.confirmQuit() {
+						return
+					}
+					continue
 				}
 				g.processAction(action)
 			}
@@ -640,6 +643,49 @@ func (g *Game) checkVictory() {
 	}
 	g.state = StateVictory
 	g.addMessage("The Unmaker dissolves into prismatic light. The Spire's heart is yours!")
+}
+
+// confirmQuit draws a small overlay asking the player to confirm quitting.
+// Returns true if the player confirms (Y), false otherwise (N / Escape).
+func (g *Game) confirmQuit() bool {
+	sw, sh := g.screen.Size()
+	msg := "Quit the run? [Y]es / [N]o"
+	x := (sw - len(msg)) / 2
+	y := sh / 2
+	style := tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(tcell.ColorDefault).Bold(true)
+	for {
+		// Redraw the current frame so the game is visible behind the prompt.
+		playerPos := g.playerPosition()
+		g.renderer.CenterOn(playerPos.X, playerPos.Y)
+		g.renderer.DrawFrame(g.world, g.gmap, g.playerID)
+		equipATK, equipDEF := g.equipBonuses()
+		bonusATK := system.GetAttackBonus(g.world, g.playerID) + equipATK
+		bonusDEF := system.GetDefenseBonus(g.world, g.playerID) + equipDEF
+		g.renderer.DrawHUD(g.world, g.playerID, g.floor, g.selectedClass.Name, g.messages, bonusATK, bonusDEF)
+		g.putText(x, y, msg, style)
+		g.screen.Show()
+
+		ev := g.screen.PollEvent()
+		switch ev := ev.(type) {
+		case *tcell.EventResize:
+			g.screen.Sync()
+			sw, sh = g.screen.Size()
+			x = (sw - len(msg)) / 2
+			y = sh / 2
+		case *tcell.EventKey:
+			switch ev.Key() {
+			case tcell.KeyEscape:
+				return false
+			case tcell.KeyRune:
+				switch ev.Rune() {
+				case 'y', 'Y':
+					return true
+				case 'n', 'N':
+					return false
+				}
+			}
+		}
+	}
 }
 
 func (g *Game) playerPosition() component.Position {
