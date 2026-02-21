@@ -74,3 +74,59 @@ func TestQueryFiltersCorrectly(t *testing.T) {
 		t.Fatalf("expected entity %v in results, got %v", both, results[0])
 	}
 }
+
+func TestRemoveComponent(t *testing.T) {
+	w := NewWorld()
+	id := w.CreateEntity()
+	w.Add(id, testComp{val: 5})
+
+	w.Remove(id, ComponentType(1))
+
+	if w.Get(id, ComponentType(1)) != nil {
+		t.Fatal("component should be nil after Remove")
+	}
+}
+
+func TestRemoveNonexistentIsNoop(t *testing.T) {
+	w := NewWorld()
+	id := w.CreateEntity()
+	// Removing a component type that was never added must not panic.
+	w.Remove(id, ComponentType(99))
+}
+
+func TestHasComponent(t *testing.T) {
+	w := NewWorld()
+	id := w.CreateEntity()
+
+	if w.Has(id, ComponentType(1)) {
+		t.Fatal("Has should return false before Add")
+	}
+	w.Add(id, testComp{val: 1})
+	if !w.Has(id, ComponentType(1)) {
+		t.Fatal("Has should return true after Add")
+	}
+	w.Remove(id, ComponentType(1))
+	if w.Has(id, ComponentType(1)) {
+		t.Fatal("Has should return false after Remove")
+	}
+}
+
+func TestQueryExcludesDeadEntities(t *testing.T) {
+	w := NewWorld()
+	alive := w.CreateEntity()
+	w.Add(alive, testComp{})
+
+	dead := w.CreateEntity()
+	w.Add(dead, testComp{})
+	w.DestroyEntity(dead)
+
+	results := w.Query(ComponentType(1))
+	for _, id := range results {
+		if id == dead {
+			t.Fatal("Query returned a destroyed entity")
+		}
+	}
+	if len(results) != 1 || results[0] != alive {
+		t.Fatalf("expected only the alive entity; got %v", results)
+	}
+}

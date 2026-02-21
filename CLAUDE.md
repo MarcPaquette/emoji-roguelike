@@ -98,4 +98,30 @@ jq -r '.cause_of_death' ~/.local/share/emoji-roguelike/runs.jsonl | sort | uniq 
 
 ## Testing
 
-Tests live alongside source in `_test.go` files. The test strategy is table-driven where multiple cases apply. Combat tests create a fresh world per iteration — do not share a long-lived defender entity across attack loops (HP will hit 0 mid-test).
+Tests live alongside source in `_test.go` files. **Run `go test ./...` after every code change — all tests must pass before considering a task complete.**
+
+### Required test coverage
+
+Every package that contains logic (not just data structs) must have tests. When adding or modifying code:
+
+- Write tests for the new/changed behaviour before or alongside the implementation.
+- If modifying an existing function, check whether existing tests cover the new path; add cases if not.
+- Packages currently with tests: `ecs`, `gamemap`, `generate`, `system`, `factory`, `game`.
+
+### Test writing rules
+
+1. **Table-driven for multiple cases** — use a `cases []struct{...}` slice and loop with `t.Run(tc.name, ...)`.
+2. **Fresh world per iteration** — never share a mutable ECS world across table rows; a dead entity in one row corrupts later rows.
+3. **Test behaviour, not internals** — assert on observable side-effects (HP reduced, entity destroyed, map tile lit) rather than internal state.
+4. **Name tests clearly** — `TestFOVWallBlocksLight`, not `TestFOV3`. Use present-tense descriptions.
+5. **Helper functions for setup** — extract repeated world/map setup into unexported helpers (`makePlayerAt`, `newEffectsWorld`, `openMap`) so test bodies stay short.
+6. **Avoid `t.Fatal` inside loops** — use `t.Errorf` so all iterations are reported, not just the first failure.
+7. **Seed RNGs deterministically** — `rand.New(rand.NewSource(42))`. Using multiple seeds (0–9) catches edge cases in randomised logic.
+8. **Test error paths** — missing components, zero budget, empty tables, out-of-bounds calls.
+
+### What NOT to test
+
+- Pure data structs in `component/` (no logic to test).
+- Rendering (`render/`) — requires a live terminal screen.
+- Interactive UI loops (`game/inventory.go`, `game/classselect.go`) — input-driven, not unit-testable.
+- `saveRunLog` I/O errors — the function intentionally discards them; testing silent discard adds no value.

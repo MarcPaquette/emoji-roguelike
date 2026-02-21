@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/mattn/go-runewidth"
 )
 
 // DrawHUD renders the status bar and message log at the bottom of the screen.
@@ -71,16 +72,65 @@ func (r *Renderer) DrawHUD(w *ecs.World, playerID ecs.EntityID, floor int, class
 		headG, bodyG, feetG, weapG, offG)
 	r.drawText(0, hudY+2, equipLine, tcell.StyleDefault.Foreground(tcell.ColorAqua))
 
-	// Rows 3-4: last 2 messages
-	start := len(messages) - 2
-	if start < 0 {
-		start = 0
+	// Rows 3-4: last 2 wrapped message lines
+	screenW, _ := r.screen.Size()
+	var lines []string
+	for _, msg := range messages {
+		lines = append(lines, wrapText(msg, screenW)...)
 	}
-	for i, msg := range messages[start:] {
-		r.drawText(0, hudY+3+i, msg, tcell.StyleDefault.Foreground(tcell.ColorLightYellow))
+	lineStart := len(lines) - 2
+	if lineStart < 0 {
+		lineStart = 0
+	}
+	for i, line := range lines[lineStart:] {
+		if i >= 2 {
+			break
+		}
+		r.drawText(0, hudY+3+i, line, tcell.StyleDefault.Foreground(tcell.ColorLightYellow))
 	}
 
 	r.screen.Show()
+}
+
+// wrapText breaks text into lines that fit within width terminal columns,
+// correctly accounting for wide characters (emoji) that occupy 2 columns.
+func wrapText(text string, width int) []string {
+	if width <= 0 {
+		return []string{text}
+	}
+	runes := []rune(text)
+	if runewidth.StringWidth(text) <= width {
+		return []string{text}
+	}
+	var lines []string
+	for len(runes) > 0 {
+		col := 0
+		split := 0
+		lastSpace := -1
+		for split < len(runes) {
+			rw := runewidth.RuneWidth(runes[split])
+			if col+rw > width {
+				break
+			}
+			if runes[split] == ' ' {
+				lastSpace = split
+			}
+			col += rw
+			split++
+		}
+		if split == len(runes) {
+			lines = append(lines, string(runes))
+			break
+		}
+		if lastSpace > 0 {
+			lines = append(lines, string(runes[:lastSpace]))
+			runes = runes[lastSpace+1:] // skip the space
+		} else {
+			lines = append(lines, string(runes[:split]))
+			runes = runes[split:]
+		}
+	}
+	return lines
 }
 
 func (r *Renderer) drawHLine(y int, color tcell.Color) {

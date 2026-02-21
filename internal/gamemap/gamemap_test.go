@@ -57,3 +57,41 @@ func TestRectIntersects(t *testing.T) {
 		t.Error("a and c should not intersect")
 	}
 }
+
+func TestAt(t *testing.T) {
+	m := New(5, 5)
+	// Default tiles are walls; At returns a pointer into the map.
+	if m.At(2, 3).Kind != TileWall {
+		t.Fatal("expected TileWall at (2,3) before any Set")
+	}
+	m.Set(2, 3, MakeFloor())
+	if m.At(2, 3).Kind != TileFloor {
+		t.Fatal("Set should be reflected by subsequent At")
+	}
+}
+
+func TestIsTransparent(t *testing.T) {
+	cases := []struct {
+		name string
+		tile Tile
+		x, y int
+		want bool
+	}{
+		{"wall is opaque", MakeWall(), 2, 2, false},
+		{"floor is transparent", MakeFloor(), 2, 2, true},
+		{"out-of-bounds x=-1", MakeWall(), -1, 0, false},
+		{"out-of-bounds y=-1", MakeWall(), 0, -1, false},
+		{"out-of-bounds beyond width", MakeWall(), 10, 2, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := New(5, 5)
+			if tc.x >= 0 && tc.y >= 0 && tc.x < 5 && tc.y < 5 {
+				m.Set(tc.x, tc.y, tc.tile)
+			}
+			if got := m.IsTransparent(tc.x, tc.y); got != tc.want {
+				t.Errorf("IsTransparent(%d,%d) = %v; want %v", tc.x, tc.y, got, tc.want)
+			}
+		})
+	}
+}
