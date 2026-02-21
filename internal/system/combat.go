@@ -53,7 +53,7 @@ func Attack(w *ecs.World, rng *rand.Rand, attackerID, defenderID ecs.EntityID) A
 	hp := hpComp.(component.Health)
 
 	atk := cbt.Attack + GetAttackBonus(w, attackerID) + equipATKBonus(w, attackerID)
-	def += GetDefenseBonus(w, defenderID) + equipDEFBonus(w, defenderID)
+	def += GetDefenseBonus(w, defenderID) + equipDEFBonus(w, defenderID) - GetArmorBreakPenalty(w, defenderID)
 	base := atk - def
 	if base < 1 {
 		base = 1
@@ -101,6 +101,18 @@ func Attack(w *ecs.World, rng *rand.Rand, attackerID, defenderID ecs.EntityID) A
 				}
 				w.Add(attackerID, ah)
 			}
+		case 4: // stun
+			ApplyEffect(w, defenderID, component.ActiveEffect{
+				Kind:           component.EffectStun,
+				Magnitude:      1,
+				TurnsRemaining: cbt.SpecialDur,
+			})
+		case 5: // armorBreak
+			ApplyEffect(w, defenderID, component.ActiveEffect{
+				Kind:           component.EffectArmorBreak,
+				Magnitude:      cbt.SpecialMag,
+				TurnsRemaining: cbt.SpecialDur,
+			})
 		}
 	}
 

@@ -675,4 +675,15 @@ var EnemyLore = map[string]string{
 	GlyphPsychicEcho:      "The Psychic Echo — a memory of something terrible, learning to be terrible again.",
 	GlyphCrystalRevenant:  "The Crystal Revenant — returned from somewhere worse. Doesn't want to go back. Will take yours.",
 	GlyphUnmaker:          "The Unmaker — the last question the Spire ever asked. It did not like the answer.",
+	// Floor elites
+	GlyphShardmind:        "The Shardmind — a crystalline intelligence that shattered its own containment to think more freely.",
+	GlyphSporeTyrant:      "The Spore Tyrant — the Warren's apex mycorrhiza. It doesn't need to move. The spores do that for it.",
+	GlyphGearRevenant:     "The Gear Revenant — the Engine's original engineer, now made of its creation. The merger was not voluntary.",
+	GlyphPrismSpecter:     "The Prism Specter — light refracted past the visible spectrum, gaining intent somewhere in the ultraviolet.",
+	GlyphTendrilOvermind:  "The Tendril Overmind — every vine on this floor is a neuron. You have been walking inside its mind.",
+	GlyphMembraneHorror:   "The Membrane Horror — a thing from the space between dimensions that got stuck halfway through. It is not pleased.",
+	GlyphPetrifiedScholar: "The Petrified Scholar — they found the ultimate knowledge and calcified around it. The knowledge was about you.",
+	GlyphMagmaRevenant:    "The Magma Revenant — the Foundry forged it, then it forged itself again, repeatedly, until it forgot what metal feels like.",
+	GlyphSomnivore:        "The Somnivore — it ate the Cortex's dreams and grew vast. It is still hungry. You will do.",
+	GlyphPrismaticHorror:  "The Prismatic Horror — the Heart's immune response to your presence. It has been preparing since you entered Floor 1.",
 }

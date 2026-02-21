@@ -52,15 +52,35 @@ func Populate(gmap *gamemap.GameMap, cfg *Config) PopulateResult {
 	}
 	placeable := rooms[1 : len(rooms)-1]
 
-	// Place enemies within budget.
+	// Spawn the floor elite in a random placeable room (does not consume budget).
+	if cfg.EliteEnemy != nil && len(placeable) > 0 {
+		room := placeable[cfg.Rand.Intn(len(placeable))]
+		x, y := randomInRoom(room, cfg)
+		result.Enemies = append(result.Enemies, EnemySpawn{Entry: *cfg.EliteEnemy, X: x, Y: y})
+	}
+
 	budget := cfg.EnemyBudget
+
+	// Phase 1: guarantee one enemy in every placeable room (cheapest that fits budget).
+	if len(cfg.EnemyTable) > 0 {
+		for _, room := range placeable {
+			aff := affordableEnemies(cfg.EnemyTable, budget)
+			if len(aff) == 0 {
+				break
+			}
+			entry := cheapestEntry(aff)
+			x, y := randomInRoom(room, cfg)
+			result.Enemies = append(result.Enemies, EnemySpawn{Entry: entry, X: x, Y: y})
+			budget -= entry.ThreatCost
+		}
+	}
+
+	// Phase 2: spend remaining budget on random rooms/enemies (as before).
 	for budget > 0 && len(cfg.EnemyTable) > 0 {
-		// Pick a random room.
 		if len(placeable) == 0 {
 			break
 		}
 		room := placeable[cfg.Rand.Intn(len(placeable))]
-		// Pick a random enemy that fits budget.
 		affordable := affordableEnemies(cfg.EnemyTable, budget)
 		if len(affordable) == 0 {
 			break
@@ -109,6 +129,17 @@ func affordableEnemies(table []EnemySpawnEntry, budget int) []EnemySpawnEntry {
 		}
 	}
 	return out
+}
+
+// cheapestEntry returns the entry with the lowest ThreatCost from a non-empty slice.
+func cheapestEntry(entries []EnemySpawnEntry) EnemySpawnEntry {
+	best := entries[0]
+	for _, e := range entries[1:] {
+		if e.ThreatCost < best.ThreatCost {
+			best = e
+		}
+	}
+	return best
 }
 
 func randomInRoom(room gamemap.Rect, cfg *Config) (int, int) {

@@ -140,3 +140,84 @@ func TestAffordableEnemiesFilter(t *testing.T) {
 		}
 	}
 }
+
+func TestCheapestEntry(t *testing.T) {
+	cases := []struct {
+		name    string
+		entries []EnemySpawnEntry
+		wantCost int
+	}{
+		{"single entry", []EnemySpawnEntry{{Glyph: "A", ThreatCost: 5}}, 5},
+		{"first is cheapest", []EnemySpawnEntry{{Glyph: "A", ThreatCost: 2}, {Glyph: "B", ThreatCost: 5}}, 2},
+		{"last is cheapest", []EnemySpawnEntry{{Glyph: "A", ThreatCost: 8}, {Glyph: "B", ThreatCost: 3}}, 3},
+		{"middle is cheapest", []EnemySpawnEntry{{Glyph: "A", ThreatCost: 5}, {Glyph: "B", ThreatCost: 1}, {Glyph: "C", ThreatCost: 9}}, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := cheapestEntry(tc.entries)
+			if got.ThreatCost != tc.wantCost {
+				t.Errorf("got ThreatCost=%d; want %d", got.ThreatCost, tc.wantCost)
+			}
+		})
+	}
+}
+
+func TestPopulateEveryRoomGetsEnemy(t *testing.T) {
+	// With enough budget, every placeable room should contain at least one enemy.
+	// 5 rooms → 3 placeable (first=player spawn, last=stairs).
+	gmap := makeRoomedMap(5)
+	placeableCount := len(gmap.Rooms) - 2 // 3
+	cfg := makeBaseConfig(100, 0, 0)      // budget far exceeds cost of filling all rooms
+	result := Populate(gmap, cfg)
+
+	if len(result.Enemies) < placeableCount {
+		t.Errorf("expected at least %d enemies (one per placeable room), got %d", placeableCount, len(result.Enemies))
+	}
+}
+
+func TestPopulateEveryRoomGetsEnemyTightBudget(t *testing.T) {
+	// Budget exactly covers the cheapest enemy (cost 2) for each of 3 placeable rooms.
+	// Enemy table has only cost-2 entries so every room should still fill.
+	gmap := makeRoomedMap(5)
+	placeableCount := len(gmap.Rooms) - 2 // 3
+	cfg := &Config{
+		EnemyBudget: placeableCount * 2, // exactly enough for one cheap enemy per room
+		EnemyTable:  []EnemySpawnEntry{{Glyph: "🦀", ThreatCost: 2, MaxHP: 8}},
+		Rand:        rand.New(rand.NewSource(42)),
+	}
+	result := Populate(gmap, cfg)
+	if len(result.Enemies) < placeableCount {
+		t.Errorf("expected at least %d enemies, got %d", placeableCount, len(result.Enemies))
+	}
+}
+
+func TestPopulateEliteSpawned(t *testing.T) {
+	// When EliteEnemy is set, exactly one instance of it must appear in the result.
+	elite := &EnemySpawnEntry{Glyph: "💠", Name: "Shardmind", ThreatCost: 0, MaxHP: 20}
+	gmap := makeRoomedMap(5)
+	cfg := makeBaseConfig(0, 0, 0)
+	cfg.EliteEnemy = elite
+	result := Populate(gmap, cfg)
+
+	eliteCount := 0
+	for _, e := range result.Enemies {
+		if e.Entry.Glyph == elite.Glyph {
+			eliteCount++
+		}
+	}
+	if eliteCount != 1 {
+		t.Errorf("expected exactly 1 elite enemy (%s), got %d", elite.Glyph, eliteCount)
+	}
+}
+
+func TestPopulateEliteNilNoExtra(t *testing.T) {
+	// When EliteEnemy is nil, no elite should appear.
+	gmap := makeRoomedMap(5)
+	cfg := makeBaseConfig(0, 0, 0)
+	cfg.EliteEnemy = nil
+	result := Populate(gmap, cfg)
+	// With budget=0 and no elite, there should be zero enemies.
+	if len(result.Enemies) != 0 {
+		t.Errorf("expected 0 enemies with nil elite and zero budget, got %d", len(result.Enemies))
+	}
+}

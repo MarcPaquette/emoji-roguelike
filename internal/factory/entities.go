@@ -51,6 +51,13 @@ func NewEnemy(w *ecs.World, entry generate.EnemySpawnEntry, x, y int) ecs.Entity
 	w.Add(id, component.AI{Behavior: component.BehaviorChase, SightRange: entry.SightRange})
 	w.Add(id, component.Effects{})
 	w.Add(id, component.TagBlocking{})
+	if len(entry.Drops) > 0 {
+		drops := make([]component.LootEntry, len(entry.Drops))
+		for i, d := range entry.Drops {
+			drops[i] = component.LootEntry{Glyph: d.Glyph, Chance: d.Chance}
+		}
+		w.Add(id, component.Loot{Drops: drops})
+	}
 	return id
 }
 

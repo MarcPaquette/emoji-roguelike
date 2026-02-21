@@ -14,6 +14,12 @@ const (
 	CorridorStraight
 )
 
+// DropEntry describes one item that may drop from a defeated enemy.
+type DropEntry struct {
+	Glyph  string
+	Chance int // 0–100
+}
+
 // EnemySpawnEntry describes one possible enemy spawn with its threat cost.
 type EnemySpawnEntry struct {
 	Glyph         string
@@ -23,10 +29,11 @@ type EnemySpawnEntry struct {
 	Defense       int
 	MaxHP         int
 	SightRange    int
-	SpecialKind   uint8 // 0=none 1=poison 2=weaken 3=lifedrain
+	SpecialKind   uint8 // 0=none 1=poison 2=weaken 3=lifedrain 4=stun 5=armorBreak
 	SpecialChance int   // 0-100 percent
-	SpecialMag    int   // magnitude (poison dmg/turn, weaken atk penalty, lifedrain % * 10)
+	SpecialMag    int   // magnitude (poison dmg/turn, weaken atk penalty, lifedrain % * 10, armorBreak DEF penalty)
 	SpecialDur    int   // turns the status effect lasts
+	Drops         []DropEntry
 }
 
 // ItemSpawnEntry describes one possible item spawn.
@@ -64,6 +71,7 @@ type Config struct {
 	EquipTable           []EquipSpawnEntry
 	InscriptionTexts     []string // pool of wall-writing texts to draw from
 	InscriptionCount     int      // how many to place (typically 2-5)
+	EliteEnemy           *EnemySpawnEntry // if non-nil, always spawned once in a random placeable room
 	Rand                 *rand.Rand
 }
 

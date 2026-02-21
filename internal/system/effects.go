@@ -118,3 +118,23 @@ func GetSelfBurnDamage(w *ecs.World, id ecs.EntityID) int {
 	}
 	return total
 }
+
+// IsStunned reports whether an entity currently has an active stun effect.
+func IsStunned(w *ecs.World, id ecs.EntityID) bool {
+	return HasEffect(w, id, component.EffectStun)
+}
+
+// GetArmorBreakPenalty returns the total DEF reduction from active EffectArmorBreak effects.
+func GetArmorBreakPenalty(w *ecs.World, id ecs.EntityID) int {
+	c := w.Get(id, component.CEffects)
+	if c == nil {
+		return 0
+	}
+	total := 0
+	for _, e := range c.(component.Effects).Active {
+		if e.Kind == component.EffectArmorBreak {
+			total += e.Magnitude
+		}
+	}
+	return total
+}

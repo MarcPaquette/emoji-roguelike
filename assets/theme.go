@@ -66,6 +66,18 @@ const (
 	GlyphPsychicEcho     = "🧿"
 	GlyphCrystalRevenant = "🦂"
 	GlyphUnmaker         = "☄️"
+
+	// Floor elites — one unique boss-tier enemy per floor
+	GlyphShardmind       = "💠" // Floor 1 elite
+	GlyphSporeTyrant     = "🍄" // Floor 2 elite
+	GlyphGearRevenant    = "⚙️" // Floor 3 elite
+	GlyphPrismSpecter    = "✨" // Floor 4 elite
+	GlyphTendrilOvermind = "🌿" // Floor 5 elite
+	GlyphMembraneHorror  = "📄" // Floor 6 elite
+	GlyphPetrifiedScholar = "📚" // Floor 7 elite
+	GlyphMagmaRevenant   = "🌋" // Floor 8 elite
+	GlyphSomnivore       = "💭" // Floor 9 elite
+	GlyphPrismaticHorror = "🌟" // Floor 10 elite
 )
 
 // ClassDef defines a player class with stats and passive mechanics.
@@ -340,4 +352,78 @@ var ItemTables = [11][]generate.ItemSpawnEntry{
 		{Glyph: GlyphPrismaticWard, Name: "Prismatic Ward"},
 		{Glyph: GlyphVoidEssence, Name: "Void Essence"},
 	},
+}
+
+// floorElites defines the unique elite enemy for each floor (index 0 unused).
+// Elites are spawned once per floor outside the normal enemy budget.
+var floorElites = [11]*generate.EnemySpawnEntry{
+	nil, // floor 0 unused
+	{ // Floor 1 — Crystalline Labs: Shardmind
+		Glyph: GlyphShardmind, Name: "Shardmind",
+		ThreatCost: 0, MaxHP: 20, Attack: 6, Defense: 4, SightRange: 6,
+		SpecialKind: 5, SpecialChance: 30, SpecialMag: 2, SpecialDur: 4,
+		Drops: []generate.DropEntry{{Glyph: GlyphHyperflask, Chance: 60}},
+	},
+	{ // Floor 2 — Bioluminescent Warrens: Spore Tyrant
+		Glyph: GlyphSporeTyrant, Name: "Spore Tyrant",
+		ThreatCost: 0, MaxHP: 22, Attack: 6, Defense: 2, SightRange: 8,
+		SpecialKind: 4, SpecialChance: 25, SpecialMag: 0, SpecialDur: 2,
+		Drops: []generate.DropEntry{{Glyph: GlyphSporeDraught, Chance: 70}},
+	},
+	{ // Floor 3 — Resonance Engine: Gear Revenant
+		Glyph: GlyphGearRevenant, Name: "Gear Revenant",
+		ThreatCost: 0, MaxHP: 26, Attack: 8, Defense: 4, SightRange: 7,
+		SpecialKind: 2, SpecialChance: 40, SpecialMag: 3, SpecialDur: 4,
+		Drops: []generate.DropEntry{{Glyph: GlyphResonanceCoil, Chance: 60}},
+	},
+	{ // Floor 4 — Fractured Observatory: Prism Specter
+		Glyph: GlyphPrismSpecter, Name: "Prism Specter",
+		ThreatCost: 0, MaxHP: 28, Attack: 9, Defense: 3, SightRange: 10,
+		SpecialKind: 3, SpecialChance: 35, SpecialMag: 6, SpecialDur: 0,
+		Drops: []generate.DropEntry{{Glyph: GlyphPrismShard, Chance: 65}},
+	},
+	{ // Floor 5 — Apex Nexus: Tendril Overmind
+		Glyph: GlyphTendrilOvermind, Name: "Tendril Overmind",
+		ThreatCost: 0, MaxHP: 35, Attack: 10, Defense: 3, SightRange: 8,
+		SpecialKind: 1, SpecialChance: 45, SpecialMag: 3, SpecialDur: 4,
+		Drops: []generate.DropEntry{{Glyph: GlyphPrismaticWard, Chance: 65}},
+	},
+	{ // Floor 6 — Membrane of Echoes: Membrane Horror
+		Glyph: GlyphMembraneHorror, Name: "Membrane Horror",
+		ThreatCost: 0, MaxHP: 32, Attack: 11, Defense: 2, SightRange: 9,
+		SpecialKind: 5, SpecialChance: 40, SpecialMag: 3, SpecialDur: 3,
+		Drops: []generate.DropEntry{{Glyph: GlyphVoidEssence, Chance: 60}},
+	},
+	{ // Floor 7 — The Calcified Archive: Petrified Scholar
+		Glyph: GlyphPetrifiedScholar, Name: "Petrified Scholar",
+		ThreatCost: 0, MaxHP: 38, Attack: 10, Defense: 6, SightRange: 7,
+		SpecialKind: 4, SpecialChance: 30, SpecialMag: 0, SpecialDur: 3,
+		Drops: []generate.DropEntry{{Glyph: GlyphNanoSyringe, Chance: 65}},
+	},
+	{ // Floor 8 — Abyssal Foundry: Magma Revenant
+		Glyph: GlyphMagmaRevenant, Name: "Magma Revenant",
+		ThreatCost: 0, MaxHP: 42, Attack: 12, Defense: 5, SightRange: 7,
+		SpecialKind: 1, SpecialChance: 50, SpecialMag: 4, SpecialDur: 3,
+		Drops: []generate.DropEntry{{Glyph: GlyphPhaseRod, Chance: 65}},
+	},
+	{ // Floor 9 — The Dreaming Cortex: Somnivore
+		Glyph: GlyphSomnivore, Name: "Somnivore",
+		ThreatCost: 0, MaxHP: 46, Attack: 13, Defense: 4, SightRange: 10,
+		SpecialKind: 2, SpecialChance: 45, SpecialMag: 4, SpecialDur: 5,
+		Drops: []generate.DropEntry{{Glyph: GlyphResonanceBurst, Chance: 65}},
+	},
+	{ // Floor 10 — The Prismatic Heart: Prismatic Horror
+		Glyph: GlyphPrismaticHorror, Name: "Prismatic Horror",
+		ThreatCost: 0, MaxHP: 55, Attack: 15, Defense: 7, SightRange: 10,
+		SpecialKind: 3, SpecialChance: 50, SpecialMag: 6, SpecialDur: 0,
+		Drops: []generate.DropEntry{{Glyph: GlyphApexCore, Chance: 80}},
+	},
+}
+
+// FloorElite returns the elite enemy entry for the given floor, or nil if none.
+func FloorElite(floor int) *generate.EnemySpawnEntry {
+	if floor < 1 || floor > 10 {
+		return nil
+	}
+	return floorElites[floor]
 }

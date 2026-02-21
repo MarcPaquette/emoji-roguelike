@@ -258,6 +258,24 @@ func (g *Game) Run() {
 
 // processAction handles one player action and optionally advances enemy AI.
 func (g *Game) processAction(action Action) {
+	// If stunned, skip all player actions and just run a world tick.
+	if system.IsStunned(g.world, g.playerID) {
+		g.addMessage("You are stunned and cannot act!")
+		g.runLog.TurnsPlayed++
+		g.applyPoisonDamage()
+		system.TickEffects(g.world)
+		hits := system.ProcessAI(g.world, g.gmap, g.playerID, g.rng)
+		for _, h := range hits {
+			if h.Damage > 0 {
+				g.runLog.DamageTaken += h.Damage
+				g.runLog.CauseOfDeath = h.EnemyGlyph
+			}
+			g.handleSpecialHitMessage(h)
+		}
+		g.checkPlayerDead()
+		return
+	}
+
 	turnUsed := false
 
 	switch action {
@@ -306,9 +324,14 @@ func (g *Game) processAction(action Action) {
 				system.UpdateFOV(g.world, g.gmap, g.playerID, g.fovRadius)
 				g.checkInscription()
 			case system.MoveAttack:
-				// Capture name/glyph BEFORE Attack() which may destroy the entity.
+				// Capture name/glyph/position/loot BEFORE Attack() which may destroy the entity.
 				name := g.entityName(target)
 				glyph := name
+				enemyPos := g.world.Get(target, component.CPosition).(component.Position)
+				var lootDrops []component.LootEntry
+				if lc := g.world.Get(target, component.CLoot); lc != nil {
+					lootDrops = lc.(component.Loot).Drops
+				}
 				res := system.Attack(g.world, g.rng, g.playerID, target)
 				g.runLog.DamageDealt += res.Damage
 				if res.Killed {
@@ -318,6 +341,12 @@ func (g *Game) processAction(action Action) {
 						g.discoveredEnemies[glyph] = true
 						if lore, ok := assets.EnemyLore[glyph]; ok {
 							g.addMessage(lore)
+						}
+					}
+					for _, d := range lootDrops {
+						if g.rng.Intn(100) < d.Chance {
+							factory.NewItemByGlyph(g.world, d.Glyph, enemyPos.X, enemyPos.Y)
+							g.addMessage(fmt.Sprintf("The %s drops something!", name))
 						}
 					}
 					if g.selectedClass.KillRestoreHP > 0 {
@@ -345,16 +374,24 @@ func (g *Game) processAction(action Action) {
 				g.runLog.DamageTaken += h.Damage
 				g.runLog.CauseOfDeath = h.EnemyGlyph
 			}
-			switch h.SpecialApplied {
-			case 1:
-				g.addMessage(fmt.Sprintf("The %s poisons you!", h.EnemyGlyph))
-			case 2:
-				g.addMessage(fmt.Sprintf("The %s weakens your attack!", h.EnemyGlyph))
-			case 3:
-				g.addMessage(fmt.Sprintf("The %s drains your life force! (+%d HP to enemy)", h.EnemyGlyph, h.DrainedAmount))
-			}
+			g.handleSpecialHitMessage(h)
 		}
 		g.checkPlayerDead()
+	}
+}
+
+func (g *Game) handleSpecialHitMessage(h system.EnemyHitResult) {
+	switch h.SpecialApplied {
+	case 1:
+		g.addMessage(fmt.Sprintf("The %s poisons you!", h.EnemyGlyph))
+	case 2:
+		g.addMessage(fmt.Sprintf("The %s weakens your attack!", h.EnemyGlyph))
+	case 3:
+		g.addMessage(fmt.Sprintf("The %s drains your life force! (+%d HP to enemy)", h.EnemyGlyph, h.DrainedAmount))
+	case 4:
+		g.addMessage(fmt.Sprintf("The %s stuns you! (skip next turn)", h.EnemyGlyph))
+	case 5:
+		g.addMessage(fmt.Sprintf("The %s shatters your defenses!", h.EnemyGlyph))
 	}
 }
 

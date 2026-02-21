@@ -14,7 +14,9 @@ const (
 	EffectPoison
 	EffectWeaken
 	EffectDefenseBoost
-	EffectSelfBurn // 6 — player burns themselves (e.g. Resonance Burst side-effect)
+	EffectSelfBurn  // 6 — player burns themselves (e.g. Resonance Burst side-effect)
+	EffectStun      // 7 — player cannot act for Duration turns
+	EffectArmorBreak // 8 — reduces defender DEF by Magnitude for Duration turns
 )
 
 // ActiveEffect is a timed status applied to an entity.

@@ -273,3 +273,92 @@ func TestEffectBonusesReturnZeroWithNoComponent(t *testing.T) {
 		t.Errorf("GetSelfBurnDamage = %d; want 0 for entity with no CEffects", v)
 	}
 }
+
+func TestIsStunned(t *testing.T) {
+	cases := []struct {
+		name   string
+		effect *component.ActiveEffect
+		want   bool
+	}{
+		{
+			name:   "stunned entity reports true",
+			effect: &component.ActiveEffect{Kind: component.EffectStun, Magnitude: 1, TurnsRemaining: 2},
+			want:   true,
+		},
+		{
+			name:   "non-stun effect does not stun",
+			effect: &component.ActiveEffect{Kind: component.EffectPoison, Magnitude: 2, TurnsRemaining: 3},
+			want:   false,
+		},
+		{
+			name:   "no effects returns false",
+			effect: nil,
+			want:   false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var w *ecs.World
+			var id ecs.EntityID
+			if tc.effect != nil {
+				w, id = newEffectsWorld(*tc.effect)
+			} else {
+				w = ecs.NewWorld()
+				id = w.CreateEntity()
+			}
+			if got := IsStunned(w, id); got != tc.want {
+				t.Errorf("IsStunned = %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGetArmorBreakPenalty(t *testing.T) {
+	cases := []struct {
+		name    string
+		effects []component.ActiveEffect
+		want    int
+	}{
+		{
+			name:    "no effects returns 0",
+			effects: nil,
+			want:    0,
+		},
+		{
+			name:    "single armor break returns magnitude",
+			effects: []component.ActiveEffect{{Kind: component.EffectArmorBreak, Magnitude: 3, TurnsRemaining: 4}},
+			want:    3,
+		},
+		{
+			name: "unrelated effects ignored",
+			effects: []component.ActiveEffect{
+				{Kind: component.EffectPoison, Magnitude: 5, TurnsRemaining: 2},
+				{Kind: component.EffectArmorBreak, Magnitude: 2, TurnsRemaining: 3},
+			},
+			want: 2,
+		},
+		{
+			name: "no armor break among multiple effects",
+			effects: []component.ActiveEffect{
+				{Kind: component.EffectWeaken, Magnitude: 2, TurnsRemaining: 3},
+				{Kind: component.EffectPoison, Magnitude: 1, TurnsRemaining: 5},
+			},
+			want: 0,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var w *ecs.World
+			var id ecs.EntityID
+			if tc.effects == nil {
+				w = ecs.NewWorld()
+				id = w.CreateEntity()
+			} else {
+				w, id = newEffectsWorld(tc.effects...)
+			}
+			if got := GetArmorBreakPenalty(w, id); got != tc.want {
+				t.Errorf("GetArmorBreakPenalty = %d; want %d", got, tc.want)
+			}
+		})
+	}
+}
