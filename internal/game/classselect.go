@@ -28,7 +28,9 @@ func (g *Game) runClassSelect() bool {
 				g.fovRadius = g.selectedClass.FOVRadius
 				return true
 			case tcell.KeyEscape:
-				return false
+				if g.confirmQuit(func() { g.drawClassSelect(selected) }) {
+					return false
+				}
 			}
 			switch ev.Rune() {
 			case 'k', 'K':
@@ -36,7 +38,9 @@ func (g *Game) runClassSelect() bool {
 			case 'j', 'J':
 				selected = (selected + 1) % len(assets.Classes)
 			case 'q', 'Q':
-				return false
+				if g.confirmQuit(func() { g.drawClassSelect(selected) }) {
+					return false
+				}
 			case '1', '2', '3', '4', '5', '6':
 				idx := int(ev.Rune()-'1')
 				if idx >= 0 && idx < len(assets.Classes) {
