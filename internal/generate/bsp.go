@@ -53,6 +53,18 @@ type EquipSpawnEntry struct {
 	MinFloor                     int
 }
 
+// FurnitureSpawnEntry describes one decorative furniture piece and its optional one-time bonus.
+type FurnitureSpawnEntry struct {
+	Glyph       string
+	Name        string
+	Description string
+	BonusATK    int
+	BonusDEF    int
+	BonusMaxHP  int
+	HealHP      int
+	PassiveKind int // matches component.Passive* constants
+}
+
 // Config drives procedural generation for one floor.
 type Config struct {
 	MapWidth, MapHeight int
@@ -72,6 +84,9 @@ type Config struct {
 	InscriptionTexts     []string // pool of wall-writing texts to draw from
 	InscriptionCount     int      // how many to place (typically 2-5)
 	EliteEnemy           *EnemySpawnEntry // if non-nil, always spawned once in a random placeable room
+	CommonFurniture      []FurnitureSpawnEntry
+	RareFurniture        []FurnitureSpawnEntry
+	FurniturePerRoom     int // max furniture per room; actual = rng.Intn(max)+1
 	Rand                 *rand.Rand
 }
 

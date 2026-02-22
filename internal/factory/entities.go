@@ -163,6 +163,29 @@ func NewInscription(w *ecs.World, text string, x, y int) ecs.EntityID {
 	return id
 }
 
+// NewFurniture creates a decorative furniture entity that may grant a one-time bonus.
+func NewFurniture(w *ecs.World, entry generate.FurnitureSpawnEntry, x, y int) ecs.EntityID {
+	id := w.CreateEntity()
+	w.Add(id, component.Position{X: x, Y: y})
+	w.Add(id, component.Renderable{
+		Glyph:       entry.Glyph,
+		FGColor:     tcell.ColorYellow,
+		BGColor:     tcell.ColorDefault,
+		RenderOrder: 1,
+	})
+	w.Add(id, component.Furniture{
+		Glyph:       entry.Glyph,
+		Name:        entry.Name,
+		Description: entry.Description,
+		BonusATK:    entry.BonusATK,
+		BonusDEF:    entry.BonusDEF,
+		BonusMaxHP:  entry.BonusMaxHP,
+		HealHP:      entry.HealHP,
+		PassiveKind: entry.PassiveKind,
+	})
+	return id
+}
+
 // NewStairsDown creates a stairs-down entity.
 func NewStairsDown(w *ecs.World, x, y int) ecs.EntityID {
 	id := w.CreateEntity()

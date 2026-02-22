@@ -221,3 +221,85 @@ func TestPopulateEliteNilNoExtra(t *testing.T) {
 		t.Errorf("expected 0 enemies with nil elite and zero budget, got %d", len(result.Enemies))
 	}
 }
+
+func TestPopulateFurnitureSpawns(t *testing.T) {
+	// Furniture should appear in placeable rooms when tables are provided.
+	gmap := makeRoomedMap(5) // 3 placeable rooms
+	cfg := makeBaseConfig(0, 0, 0)
+	cfg.CommonFurniture = []FurnitureSpawnEntry{
+		{Glyph: "🔬", Name: "Microscope", Description: "A dusty microscope."},
+		{Glyph: "🌡️", Name: "Thermometer", Description: "Frozen solid."},
+	}
+	cfg.FurniturePerRoom = 2 // 1–2 per room
+	result := Populate(gmap, cfg)
+
+	if len(result.Furniture) == 0 {
+		t.Error("expected furniture to be placed, got none")
+	}
+	// Each piece must reference a known glyph.
+	known := map[string]bool{"🔬": true, "🌡️": true}
+	for _, f := range result.Furniture {
+		if !known[f.Entry.Glyph] {
+			t.Errorf("unexpected furniture glyph: %q", f.Entry.Glyph)
+		}
+	}
+}
+
+func TestPopulateFurnitureSkipsLastRoom(t *testing.T) {
+	// Furniture uses placeable rooms (skips first=player spawn and last=stairs).
+	// With 3 rooms, there is only 1 placeable room.
+	gmap := makeRoomedMap(3)
+	cfg := makeBaseConfig(0, 0, 0)
+	cfg.CommonFurniture = []FurnitureSpawnEntry{
+		{Glyph: "🔬", Name: "Microscope", Description: "A dusty microscope."},
+	}
+	cfg.FurniturePerRoom = 1
+	result := Populate(gmap, cfg)
+	// Should have exactly 1 furniture piece (1 placeable room × 1 max per room).
+	if len(result.Furniture) != 1 {
+		t.Errorf("expected 1 furniture piece for 1 placeable room, got %d", len(result.Furniture))
+	}
+}
+
+func TestPopulateFurnitureRareRoll(t *testing.T) {
+	// With only a rare table and no common table, furniture should come from rare.
+	gmap := makeRoomedMap(5)
+	cfg := makeBaseConfig(0, 0, 0)
+	cfg.RareFurniture = []FurnitureSpawnEntry{
+		{Glyph: "🫙", Name: "Sample Jar", Description: "Sealed.", BonusMaxHP: 8},
+	}
+	cfg.FurniturePerRoom = 1
+	cfg.Rand = rand.New(rand.NewSource(99)) // deterministic
+	result := Populate(gmap, cfg)
+	// Since there's no common table, every piece must be from the rare table.
+	for _, f := range result.Furniture {
+		if f.Entry.Glyph != "🫙" {
+			t.Errorf("expected rare glyph 🫙, got %q", f.Entry.Glyph)
+		}
+	}
+}
+
+func TestPopulateFurnitureNoSpawnWhenTablesEmpty(t *testing.T) {
+	// With empty furniture tables, no furniture should spawn even if FurniturePerRoom > 0.
+	gmap := makeRoomedMap(5)
+	cfg := makeBaseConfig(0, 0, 0)
+	cfg.FurniturePerRoom = 3
+	result := Populate(gmap, cfg)
+	if len(result.Furniture) != 0 {
+		t.Errorf("expected 0 furniture with empty tables, got %d", len(result.Furniture))
+	}
+}
+
+func TestPopulateFurnitureNoSpawnWhenPerRoomZero(t *testing.T) {
+	// With FurniturePerRoom == 0, no furniture should spawn.
+	gmap := makeRoomedMap(5)
+	cfg := makeBaseConfig(0, 0, 0)
+	cfg.CommonFurniture = []FurnitureSpawnEntry{
+		{Glyph: "🔬", Name: "Microscope", Description: "A dusty microscope."},
+	}
+	cfg.FurniturePerRoom = 0
+	result := Populate(gmap, cfg)
+	if len(result.Furniture) != 0 {
+		t.Errorf("expected 0 furniture with FurniturePerRoom=0, got %d", len(result.Furniture))
+	}
+}

@@ -59,6 +59,11 @@ type Game struct {
 	baseMaxHP         int // base MaxHP from class, used by recalcPlayerMaxHP
 	discoveredEnemies map[string]bool
 	runLog            RunLog
+	// Permanent furniture bonus state (persists across floor transitions).
+	furnitureATK         int  // cumulative ATK bonus from furniture
+	furnitureDEF         int  // cumulative DEF bonus from furniture
+	furnitureThorns      int  // damage reflected per hit taken
+	furnitureKillRestore bool // restore 1 HP on each kill
 }
 
 // New creates and returns a Game with screen initialized.
@@ -94,6 +99,10 @@ func (g *Game) resetForRun() {
 		EnemiesKilled: make(map[string]int),
 		ItemsUsed:     make(map[string]int),
 	}
+	g.furnitureATK = 0
+	g.furnitureDEF = 0
+	g.furnitureThorns = 0
+	g.furnitureKillRestore = false
 }
 
 // loadFloor generates and populates the given floor.
@@ -141,9 +150,22 @@ func (g *Game) loadFloor(floor int) {
 	for _, ins := range pop.Inscriptions {
 		factory.NewInscription(g.world, ins.Text, ins.X, ins.Y)
 	}
+	for _, fs := range pop.Furniture {
+		factory.NewFurniture(g.world, fs.Entry, fs.X, fs.Y)
+	}
 
 	// Create player using the selected class definition.
 	g.playerID = factory.NewPlayer(g.world, px, py, g.selectedClass)
+
+	// Reapply persistent furniture ATK/DEF bonuses to the new player entity.
+	if g.furnitureATK != 0 || g.furnitureDEF != 0 {
+		if cc := g.world.Get(g.playerID, component.CCombat); cc != nil {
+			c := cc.(component.Combat)
+			c.Attack += g.furnitureATK
+			c.Defense += g.furnitureDEF
+			g.world.Add(g.playerID, c)
+		}
+	}
 
 	// Restore HP from previous floor (capped at max).
 	if savedHP > 0 && floor > 1 {
@@ -280,6 +302,13 @@ func (g *Game) processAction(action Action) {
 			if h.Damage > 0 {
 				g.runLog.DamageTaken += h.Damage
 				g.runLog.CauseOfDeath = h.EnemyGlyph
+				if g.furnitureThorns > 0 && h.AttackerID != ecs.NilEntity && g.world.Alive(h.AttackerID) {
+					if hp := g.world.Get(h.AttackerID, component.CHealth); hp != nil {
+						hpVal := hp.(component.Health)
+						hpVal.Current -= g.furnitureThorns
+						g.world.Add(h.AttackerID, hpVal)
+					}
+				}
 			}
 			g.handleSpecialHitMessage(h)
 		}
@@ -334,6 +363,9 @@ func (g *Game) processAction(action Action) {
 				turnUsed = true
 				system.UpdateFOV(g.world, g.gmap, g.playerID, g.fovRadius)
 				g.checkInscription()
+			case system.MoveInteract:
+				g.interactFurniture(target)
+				turnUsed = true
 			case system.MoveAttack:
 				// Capture name/glyph/position/loot BEFORE Attack() which may destroy the entity.
 				name := g.entityName(target)
@@ -364,6 +396,9 @@ func (g *Game) processAction(action Action) {
 						g.restorePlayerHP(g.selectedClass.KillRestoreHP)
 						g.addMessage(fmt.Sprintf("The kill feeds you. (+%d HP)", g.selectedClass.KillRestoreHP))
 					}
+					if g.furnitureKillRestore {
+						g.restorePlayerHP(1)
+					}
 					g.checkVictory()
 				} else {
 					g.addMessage(fmt.Sprintf("You hit the %s for %d damage.", name, res.Damage))
@@ -391,6 +426,14 @@ func (g *Game) processAction(action Action) {
 			if h.Damage > 0 {
 				g.runLog.DamageTaken += h.Damage
 				g.runLog.CauseOfDeath = h.EnemyGlyph
+				// Thorns: reflect damage back to the attacker.
+				if g.furnitureThorns > 0 && h.AttackerID != ecs.NilEntity && g.world.Alive(h.AttackerID) {
+					if hp := g.world.Get(h.AttackerID, component.CHealth); hp != nil {
+						hpVal := hp.(component.Health)
+						hpVal.Current -= g.furnitureThorns
+						g.world.Add(h.AttackerID, hpVal)
+					}
+				}
 			}
 			g.handleSpecialHitMessage(h)
 		}
@@ -622,6 +665,76 @@ func (g *Game) checkInscription() {
 			return
 		}
 	}
+}
+
+// interactFurniture reads the flavour text and applies any one-time bonus.
+func (g *Game) interactFurniture(id ecs.EntityID) {
+	fc := g.world.Get(id, component.CFurniture)
+	if fc == nil {
+		return
+	}
+	f := fc.(component.Furniture)
+	g.addMessage(fmt.Sprintf("%s %s: %s", f.Glyph, f.Name, f.Description))
+	if f.Used {
+		return
+	}
+
+	hasBonus := f.BonusATK != 0 || f.BonusDEF != 0 || f.BonusMaxHP != 0 ||
+		f.HealHP != 0 || f.PassiveKind != 0
+	if !hasBonus {
+		return
+	}
+
+	if f.BonusATK != 0 {
+		g.furnitureATK += f.BonusATK
+		if cc := g.world.Get(g.playerID, component.CCombat); cc != nil {
+			c := cc.(component.Combat)
+			c.Attack += f.BonusATK
+			g.world.Add(g.playerID, c)
+		}
+		g.addMessage(fmt.Sprintf("Permanent ATK +%d!", f.BonusATK))
+	}
+	if f.BonusDEF != 0 {
+		g.furnitureDEF += f.BonusDEF
+		if cc := g.world.Get(g.playerID, component.CCombat); cc != nil {
+			c := cc.(component.Combat)
+			c.Defense += f.BonusDEF
+			g.world.Add(g.playerID, c)
+		}
+		g.addMessage(fmt.Sprintf("Permanent DEF +%d!", f.BonusDEF))
+	}
+	if f.BonusMaxHP != 0 {
+		g.baseMaxHP += f.BonusMaxHP
+		if hp := g.world.Get(g.playerID, component.CHealth); hp != nil {
+			h := hp.(component.Health)
+			h.Max += f.BonusMaxHP
+			h.Current += f.BonusMaxHP
+			if h.Current > h.Max {
+				h.Current = h.Max
+			}
+			g.world.Add(g.playerID, h)
+		}
+		g.addMessage(fmt.Sprintf("Permanent MaxHP +%d!", f.BonusMaxHP))
+	}
+	if f.HealHP != 0 {
+		g.restorePlayerHP(f.HealHP)
+		g.addMessage(fmt.Sprintf("Restored %d HP!", f.HealHP))
+	}
+	switch f.PassiveKind {
+	case component.PassiveKeenEye:
+		g.fovRadius++
+		system.UpdateFOV(g.world, g.gmap, g.playerID, g.fovRadius)
+		g.addMessage("Your vision expands permanently.")
+	case component.PassiveKillRestore:
+		g.furnitureKillRestore = true
+		g.addMessage("You feel your life force quicken on each kill.")
+	case component.PassiveThorns:
+		g.furnitureThorns++
+		g.addMessage("Sharp crystals form beneath your skin.")
+	}
+
+	f.Used = true
+	g.world.Add(id, f)
 }
 
 func (g *Game) teleportPlayer() {

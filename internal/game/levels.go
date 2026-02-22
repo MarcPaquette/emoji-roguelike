@@ -35,6 +35,9 @@ func levelConfig(floor int, rng *rand.Rand) *generate.Config {
 		InscriptionTexts: assets.WallWritings[floor],
 		InscriptionCount: 2 + rng.Intn(4), // 2–5 per floor
 		EliteEnemy:       assets.FloorElite(floor),
+		CommonFurniture:  assets.FurnitureByFloor[floor].Common,
+		RareFurniture:    assets.FurnitureByFloor[floor].Rare,
+		FurniturePerRoom: 2, // 1–2 pieces per room
 		Rand:             rng,
 	}
 }

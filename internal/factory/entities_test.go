@@ -241,3 +241,70 @@ func TestNewStairsDownComponents(t *testing.T) {
 		t.Error("stairs entity must have CTagStairs")
 	}
 }
+
+func TestNewFurnitureComponents(t *testing.T) {
+	entry := generate.FurnitureSpawnEntry{
+		Glyph:       "🔬",
+		Name:        "Microscope",
+		Description: "A dusty microscope.",
+		BonusATK:    0,
+		BonusDEF:    0,
+		BonusMaxHP:  8,
+	}
+	w := ecs.NewWorld()
+	id := NewFurniture(w, entry, 3, 7)
+
+	if !w.Alive(id) {
+		t.Fatal("furniture entity must be alive")
+	}
+	pos := w.Get(id, component.CPosition)
+	if pos == nil {
+		t.Fatal("furniture must have CPosition")
+	}
+	if p := pos.(component.Position); p.X != 3 || p.Y != 7 {
+		t.Errorf("position = (%d,%d); want (3,7)", p.X, p.Y)
+	}
+	fc := w.Get(id, component.CFurniture)
+	if fc == nil {
+		t.Fatal("furniture must have CFurniture")
+	}
+	f := fc.(component.Furniture)
+	if f.Glyph != entry.Glyph {
+		t.Errorf("Glyph = %q; want %q", f.Glyph, entry.Glyph)
+	}
+	if f.Name != entry.Name {
+		t.Errorf("Name = %q; want %q", f.Name, entry.Name)
+	}
+	if f.Description != entry.Description {
+		t.Errorf("Description = %q; want %q", f.Description, entry.Description)
+	}
+	if f.BonusMaxHP != entry.BonusMaxHP {
+		t.Errorf("BonusMaxHP = %d; want %d", f.BonusMaxHP, entry.BonusMaxHP)
+	}
+	if f.Used {
+		t.Error("new furniture must not be Used")
+	}
+}
+
+func TestNewFurnitureHasRenderable(t *testing.T) {
+	entry := generate.FurnitureSpawnEntry{Glyph: "🌡️", Name: "Thermometer", Description: "Frozen."}
+	w := ecs.NewWorld()
+	id := NewFurniture(w, entry, 0, 0)
+	rend := w.Get(id, component.CRenderable)
+	if rend == nil {
+		t.Fatal("furniture must have CRenderable")
+	}
+	if r := rend.(component.Renderable); r.Glyph != entry.Glyph {
+		t.Errorf("Renderable.Glyph = %q; want %q", r.Glyph, entry.Glyph)
+	}
+}
+
+func TestNewFurnitureNotBlocking(t *testing.T) {
+	// Furniture must NOT have CTagBlocking (interaction handled via MoveInteract).
+	entry := generate.FurnitureSpawnEntry{Glyph: "🔬", Name: "Microscope", Description: "A dusty microscope."}
+	w := ecs.NewWorld()
+	id := NewFurniture(w, entry, 0, 0)
+	if w.Has(id, component.CTagBlocking) {
+		t.Error("furniture must not have CTagBlocking")
+	}
+}

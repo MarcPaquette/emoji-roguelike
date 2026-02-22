@@ -10,13 +10,14 @@ import (
 type MoveResult uint8
 
 const (
-	MoveOK      MoveResult = iota // position updated
-	MoveBlocked                   // wall or out-of-bounds
-	MoveAttack                    // bumped a blocking entity
+	MoveOK       MoveResult = iota // position updated
+	MoveBlocked                    // wall or out-of-bounds
+	MoveAttack                     // bumped a blocking entity
+	MoveInteract                   // bumped an interactable (furniture)
 )
 
 // TryMove attempts to move entity id by (dx, dy) on gmap.
-// Returns the outcome and (if MoveAttack) the target entity.
+// Returns the outcome and (if MoveAttack or MoveInteract) the target entity.
 func TryMove(w *ecs.World, gmap *gamemap.GameMap, id ecs.EntityID, dx, dy int) (MoveResult, ecs.EntityID) {
 	posComp := w.Get(id, component.CPosition)
 	if posComp == nil {
@@ -24,6 +25,17 @@ func TryMove(w *ecs.World, gmap *gamemap.GameMap, id ecs.EntityID, dx, dy int) (
 	}
 	pos := posComp.(component.Position)
 	nx, ny := pos.X+dx, pos.Y+dy
+
+	// Check for furniture (interactable, non-hostile blockage) before combat check.
+	for _, eid := range w.Query(component.CFurniture, component.CPosition) {
+		if eid == id {
+			continue
+		}
+		epos := w.Get(eid, component.CPosition).(component.Position)
+		if epos.X == nx && epos.Y == ny {
+			return MoveInteract, eid
+		}
+	}
 
 	// Check for blocking entities at destination.
 	for _, other := range w.Query(component.CTagBlocking, component.CPosition) {

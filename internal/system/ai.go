@@ -11,6 +11,7 @@ import (
 // EnemyHitResult holds information about an enemy attack on the player.
 type EnemyHitResult struct {
 	EnemyGlyph     string
+	AttackerID     ecs.EntityID // entity that landed the attack (for thorns)
 	SpecialApplied uint8
 	DrainedAmount  int
 	Damage         int
@@ -44,6 +45,7 @@ func ProcessAI(w *ecs.World, gmap *gamemap.GameMap, playerID ecs.EntityID, rng *
 		if attacked {
 			hits = append(hits, EnemyHitResult{
 				EnemyGlyph:     glyph,
+				AttackerID:     id,
 				SpecialApplied: res.SpecialApplied,
 				DrainedAmount:  res.DrainedAmount,
 				Damage:         res.Damage,
