@@ -55,8 +55,14 @@ func (g *Game) runClassSelect() bool {
 
 // drawClassSelect renders the full class selection UI to the screen.
 func (g *Game) drawClassSelect(selected int) {
-	g.screen.Clear()
-	w, _ := g.screen.Size()
+	drawClassSelectScreen(g.screen, selected)
+}
+
+// drawClassSelectScreen renders the class selection UI onto any tcell screen.
+// Extracted so cooperative mode can display it on individual player screens.
+func drawClassSelectScreen(screen tcell.Screen, selected int) {
+	screen.Clear()
+	w, _ := screen.Size()
 
 	titleStyle := tcell.StyleDefault.Foreground(tcell.NewRGBColor(180, 100, 255)).Bold(true)
 	normalStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite)
@@ -70,7 +76,7 @@ func (g *Game) drawClassSelect(selected int) {
 		if x < 0 {
 			x = 0
 		}
-		drawScreenText(g.screen, x, y, text, style)
+		drawScreenText(screen, x, y, text, style)
 	}
 
 	centerText(1, "✨ THE PRISMATIC SPIRE ✨", titleStyle)
@@ -89,25 +95,25 @@ func (g *Game) drawClassSelect(selected int) {
 
 		// Line 1: number + emoji + name
 		nameLine := fmt.Sprintf("%s[%d] %s %s", prefix, i+1, class.Emoji, class.Name)
-		drawScreenText(g.screen, 2, y, nameLine, lineStyle)
+		drawScreenText(screen, 2, y, nameLine, lineStyle)
 
 		// Line 2: lore (indented, dimmed)
 		loreLine := fmt.Sprintf("      \"%s\"", class.Lore)
-		drawScreenText(g.screen, 2, y+1, loreLine, dimStyle)
+		drawScreenText(screen, 2, y+1, loreLine, dimStyle)
 
 		// Line 3: stats
 		statsLine := fmt.Sprintf("      HP:%-3d ATK:%-2d DEF:%-2d FOV:%-2d", class.MaxHP, class.Attack, class.Defense, class.FOVRadius)
-		drawScreenText(g.screen, 2, y+2, statsLine, statStyle)
+		drawScreenText(screen, 2, y+2, statsLine, statStyle)
 
 		// Line 4: passive
 		passiveLine := fmt.Sprintf("      Passive: %s", class.PassiveDesc)
-		drawScreenText(g.screen, 2, y+3, passiveLine, passiveStyle)
+		drawScreenText(screen, 2, y+3, passiveLine, passiveStyle)
 	}
 
 	hintsY := startY + len(assets.Classes)*5 + 1
 	centerText(hintsY, "[j/k or ↑/↓] Navigate   [1-6] Quick-select   [Enter] Confirm   [q] Quit", dimStyle)
 
-	g.screen.Show()
+	screen.Show()
 }
 
 // drawScreenText writes a string to the screen at (x, y) with the given style.
