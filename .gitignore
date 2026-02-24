@@ -1,1 +1,11 @@
+# Compiled binaries
 emoji-roguelike
+emoji-roguelike-server
+
+# SSH server state
+server_host_key
+server
+
+# Go test cache and coverage
+*.test
+*.out
