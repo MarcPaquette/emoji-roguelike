@@ -345,6 +345,30 @@ func (g *Game) processAction(action Action) {
 			g.addMessage("There are no stairs up here.")
 		}
 
+	case ActionUseStairs:
+		pos := g.playerPosition()
+		tile := g.gmap.At(pos.X, pos.Y)
+		switch tile.Kind {
+		case gamemap.TileStairsDown:
+			if g.floor >= MaxFloors {
+				g.addMessage("There is nowhere further to descend.")
+			} else {
+				g.loadFloor(g.floor + 1)
+				return
+			}
+		case gamemap.TileStairsUp:
+			if g.floor > 1 {
+				g.loadFloor(g.floor - 1)
+				return
+			}
+			g.addMessage("There are no stairs up here.")
+		default:
+			g.addMessage("There are no stairs here.")
+		}
+
+	case ActionHelp:
+		g.runHelpScreen()
+
 	case ActionPickup:
 		g.tryPickup()
 		turnUsed = true
@@ -882,6 +906,82 @@ func (g *Game) confirmQuit(redraw func()) bool {
 					return false
 				}
 			}
+		}
+	}
+}
+
+// runHelpScreen shows a keybinding reference overlay. Any key dismisses it.
+func (g *Game) runHelpScreen() {
+	lines := []string{
+		"── Movement ──────────────────────────",
+		"  Arrow keys / hjkl   Cardinal",
+		"  yubn / 7 9 1 3      Diagonal",
+		"  5 / .               Wait a turn",
+		"",
+		"── Actions ───────────────────────────",
+		"  g / ,               Pick up item",
+		"  i                   Inventory",
+		"  Enter               Use stairs",
+		"  z                   Special ability",
+		"",
+		"── Stairs (alternate) ────────────────",
+		"  >                   Descend",
+		"  <                   Ascend",
+		"",
+		"── Game ──────────────────────────────",
+		"  q / Esc             Quit",
+		"  ?                   This help",
+		"",
+		"  [any key to close]",
+	}
+
+	header := " Controls "
+	width := 42
+	hdrStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true)
+	bodyStyle := tcell.StyleDefault.Foreground(tcell.ColorSilver)
+	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+
+	draw := func() {
+		g.screen.Clear()
+		g.renderer.DrawFrame(g.world, g.gmap, g.playerID)
+		sw, sh := g.screen.Size()
+		boxH := len(lines) + 3
+		x0 := (sw - width) / 2
+		y0 := (sh - boxH) / 2
+
+		// Draw border
+		for col := x0; col < x0+width; col++ {
+			g.screen.SetContent(col, y0, '─', nil, borderStyle)
+			g.screen.SetContent(col, y0+boxH-1, '─', nil, borderStyle)
+		}
+		for row := y0; row < y0+boxH; row++ {
+			g.screen.SetContent(x0, row, '│', nil, borderStyle)
+			g.screen.SetContent(x0+width-1, row, '│', nil, borderStyle)
+		}
+		g.screen.SetContent(x0, y0, '┌', nil, borderStyle)
+		g.screen.SetContent(x0+width-1, y0, '┐', nil, borderStyle)
+		g.screen.SetContent(x0, y0+boxH-1, '└', nil, borderStyle)
+		g.screen.SetContent(x0+width-1, y0+boxH-1, '┘', nil, borderStyle)
+
+		// Header centred in top border
+		hx := x0 + (width-len(header))/2
+		g.putText(hx, y0, header, hdrStyle)
+
+		// Body lines
+		for i, line := range lines {
+			g.putText(x0+2, y0+1+i, line, bodyStyle)
+		}
+	}
+
+	for {
+		draw()
+		g.screen.Show()
+		ev := g.screen.PollEvent()
+		switch ev.(type) {
+		case *tcell.EventResize:
+			g.screen.Sync()
+		case *tcell.EventKey:
+			return
 		}
 	}
 }

@@ -22,6 +22,8 @@ const (
 	ActionAscend
 	ActionQuit
 	ActionSpecialAbility
+	ActionHelp
+	ActionUseStairs
 )
 
 // keyToAction maps a tcell key event to a game action.
@@ -36,12 +38,15 @@ func keyToAction(ev *tcell.EventKey) Action {
 		return ActionMoveE
 	case tcell.KeyLeft:
 		return ActionMoveW
+	case tcell.KeyEnter:
+		return ActionUseStairs
 	case tcell.KeyEscape:
 		return ActionQuit
 	}
 
 	// Rune keys.
 	switch ev.Rune() {
+	// vim-style cardinal movement
 	case 'k', 'K':
 		return ActionMoveN
 	case 'j', 'J':
@@ -50,6 +55,7 @@ func keyToAction(ev *tcell.EventKey) Action {
 		return ActionMoveE
 	case 'h', 'H':
 		return ActionMoveW
+	// vim-style diagonal movement
 	case 'y', 'Y':
 		return ActionMoveNW
 	case 'u', 'U':
@@ -58,9 +64,29 @@ func keyToAction(ev *tcell.EventKey) Action {
 		return ActionMoveSW
 	case 'n', 'N':
 		return ActionMoveSE
+	// numpad (numlock on): 7-9 top row, 4-6 middle, 1-3 bottom, 5 = wait
+	case '8':
+		return ActionMoveN
+	case '2':
+		return ActionMoveS
+	case '6':
+		return ActionMoveE
+	case '4':
+		return ActionMoveW
+	case '9':
+		return ActionMoveNE
+	case '7':
+		return ActionMoveNW
+	case '3':
+		return ActionMoveSE
+	case '1':
+		return ActionMoveSW
+	case '5':
+		return ActionWait
+	// actions
 	case '.':
 		return ActionWait
-	case ',':
+	case ',', 'g', 'G':
 		return ActionPickup
 	case 'i', 'I':
 		return ActionInventory
@@ -72,6 +98,8 @@ func keyToAction(ev *tcell.EventKey) Action {
 		return ActionQuit
 	case 'z', 'Z':
 		return ActionSpecialAbility
+	case '?':
+		return ActionHelp
 	}
 	return ActionNone
 }
