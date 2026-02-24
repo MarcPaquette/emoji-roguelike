@@ -70,6 +70,7 @@ func drawClassSelectScreen(screen tcell.Screen, selected int) {
 	highlightStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(tcell.NewRGBColor(180, 100, 255))
 	statStyle := tcell.StyleDefault.Foreground(tcell.NewRGBColor(150, 220, 255))
 	passiveStyle := tcell.StyleDefault.Foreground(tcell.NewRGBColor(255, 200, 50))
+	abilityStyle := tcell.StyleDefault.Foreground(tcell.NewRGBColor(100, 255, 180))
 
 	centerText := func(y int, text string, style tcell.Style) {
 		x := (w - len([]rune(text))) / 2
@@ -82,7 +83,7 @@ func drawClassSelectScreen(screen tcell.Screen, selected int) {
 	centerText(1, "✨ THE PRISMATIC SPIRE ✨", titleStyle)
 	centerText(2, "Choose your dimensional class", dimStyle)
 
-	// Each class occupies 4 lines + 1 blank = 5 rows. Start at row 4.
+	// Each class occupies 5 lines (name, lore, stats, passive, ability). Start at row 4.
 	startY := 4
 	for i, class := range assets.Classes {
 		y := startY + i*5
@@ -108,10 +109,23 @@ func drawClassSelectScreen(screen tcell.Screen, selected int) {
 		// Line 4: passive
 		passiveLine := fmt.Sprintf("      Passive: %s", class.PassiveDesc)
 		drawScreenText(screen, 2, y+3, passiveLine, passiveStyle)
+
+		// Line 5: active ability
+		var abilityLine string
+		if class.AbilityName != "" {
+			freeTag := ""
+			if class.AbilityFreeOnFloor {
+				freeTag = " (free per floor)"
+			}
+			abilityLine = fmt.Sprintf("      [z] %s: %s%s", class.AbilityName, class.AbilityDesc, freeTag)
+		} else {
+			abilityLine = "      [z] —"
+		}
+		drawScreenText(screen, 2, y+4, abilityLine, abilityStyle)
 	}
 
 	hintsY := startY + len(assets.Classes)*5 + 1
-	centerText(hintsY, "[j/k or ↑/↓] Navigate   [1-6] Quick-select   [Enter] Confirm   [q] Quit", dimStyle)
+	centerText(hintsY, "[j/k or ↑/↓] Navigate   [1-6] Quick-select   [Enter] Confirm   [z] Use ability   [q] Quit", dimStyle)
 
 	screen.Show()
 }

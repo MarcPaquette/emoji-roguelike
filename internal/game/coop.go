@@ -29,6 +29,7 @@ type coopPlayer struct {
 	furnitureDEF         int
 	furnitureThorns      int
 	furnitureKillRestore bool
+	specialCooldown      int // turns until z-ability can be used again
 	// events receives all tcell events from the polling goroutine.
 	events            chan tcell.Event
 	alive             bool
@@ -325,13 +326,6 @@ func (g *CoopGame) loadFloor(floor int) {
 
 		// Floor 1 passives.
 		if floor == 1 {
-			if p.class.StartInvisible > 0 {
-				system.ApplyEffect(g.world, p.id, component.ActiveEffect{
-					Kind:           component.EffectInvisible,
-					Magnitude:      1,
-					TurnsRemaining: p.class.StartInvisible,
-				})
-			}
 			for j, glyph := range p.class.StartItems {
 				offsets := [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
 				ox, oy := offsets[j%len(offsets)][0], offsets[j%len(offsets)][1]
@@ -343,23 +337,14 @@ func (g *CoopGame) loadFloor(floor int) {
 			}
 		}
 
+		// Reset ability cooldown on each floor entry for classes with AbilityFreeOnFloor.
+		if p.class.AbilityFreeOnFloor {
+			p.specialCooldown = 0
+		}
+
 		system.UpdateFOV(g.world, g.gmap, p.id, p.fovRadius)
 		p.renderer = render.NewRenderer(p.screen, floor)
 		p.renderer.CenterOn(spawnX[i], spawnY[i])
-	}
-
-	// StartRevealMap is a class passive — apply once for any player that has it.
-	for _, p := range g.players {
-		if p.alive && floor == 1 && p.class.StartRevealMap {
-			for y := 0; y < gmap.Height; y++ {
-				for x := 0; x < gmap.Width; x++ {
-					if gmap.At(x, y).Walkable {
-						gmap.At(x, y).Explored = true
-					}
-				}
-			}
-			break
-		}
 	}
 
 	if floor == 1 {
@@ -385,7 +370,7 @@ func (g *CoopGame) renderAll() {
 		equipATK, equipDEF := g.coopEquipBonuses(p)
 		bonusATK := system.GetAttackBonus(g.world, p.id) + equipATK
 		bonusDEF := system.GetDefenseBonus(g.world, p.id) + equipDEF
-		p.renderer.DrawHUD(g.world, p.id, g.floor, p.class.Name, g.messages, bonusATK, bonusDEF)
+		p.renderer.DrawHUD(g.world, p.id, g.floor, p.class.Name, g.messages, bonusATK, bonusDEF, p.class.AbilityName, p.specialCooldown)
 	}
 }
 
@@ -453,6 +438,18 @@ func (g *CoopGame) processCoopAction(p *coopPlayer, action Action) bool {
 	case ActionInventory:
 		return g.coopRunInventory(p)
 
+	case ActionSpecialAbility:
+		if p.class.AbilityCooldown == 0 {
+			g.addMessage(fmt.Sprintf("%s has no special ability.", p.class.Name))
+		} else if p.specialCooldown > 0 {
+			g.addMessage(fmt.Sprintf("%s: %s recharging (%d turns).", p.class.Name, p.class.AbilityName, p.specialCooldown))
+		} else {
+			g.useCoopSpecialAbility(p)
+			p.specialCooldown = p.class.AbilityCooldown
+			return true
+		}
+		return false
+
 	default:
 		dx, dy := actionToDelta(action)
 		if dx == 0 && dy == 0 {
@@ -501,6 +498,10 @@ func (g *CoopGame) processCoopAction(p *coopPlayer, action Action) bool {
 				if p.class.KillRestoreHP > 0 {
 					g.coopRestorePlayerHP(p, p.class.KillRestoreHP)
 				}
+				if p.class.KillHealChance > 0 && g.rng.Intn(100) < p.class.KillHealChance {
+					g.coopRestorePlayerHP(p, 2)
+					g.addMessage(fmt.Sprintf("%s: Wild magic sparks! (+2 HP)", p.class.Name))
+				}
 				if p.furnitureKillRestore {
 					g.coopRestorePlayerHP(p, 1)
 				}
@@ -534,6 +535,19 @@ func (g *CoopGame) tickWorld() {
 		}
 	}
 	system.TickEffects(g.world)
+
+	// Per-player passive ticks: ability cooldown and regeneration.
+	for _, p := range g.players {
+		if !p.alive {
+			continue
+		}
+		if p.specialCooldown > 0 {
+			p.specialCooldown--
+		}
+		if p.class.PassiveRegen > 0 && p.runLog.TurnsPlayed > 0 && p.runLog.TurnsPlayed%p.class.PassiveRegen == 0 {
+			g.coopRestorePlayerHP(p, 1)
+		}
+	}
 
 	// Determine AI target: nearest live player to the map centroid.
 	targetID := g.nearestLivePlayerID()
@@ -733,6 +747,65 @@ func (g *CoopGame) coopCheckInscription(p *coopPlayer) {
 			g.addMessage("📝 " + text)
 			return
 		}
+	}
+}
+
+// useCoopSpecialAbility fires the class active ability for a coop player.
+func (g *CoopGame) useCoopSpecialAbility(p *coopPlayer) {
+	switch p.class.ID {
+	case "arcanist":
+		g.coopTeleportPlayer(p)
+		g.addMessage(fmt.Sprintf("%s: Dimensional Rift — reappears elsewhere!", p.class.Name))
+
+	case "revenant":
+		hpComp := g.world.Get(p.id, component.CHealth)
+		if hpComp == nil {
+			return
+		}
+		hp := hpComp.(component.Health)
+		if hp.Current <= 5 {
+			g.addMessage(fmt.Sprintf("%s: Too wounded to bargain with death!", p.class.Name))
+			p.specialCooldown = 0 // refund cooldown
+			return
+		}
+		hp.Current -= 5
+		g.world.Add(p.id, hp)
+		system.ApplyEffect(g.world, p.id, component.ActiveEffect{
+			Kind: component.EffectAttackBoost, Magnitude: 6, TurnsRemaining: 8,
+		})
+		g.addMessage(fmt.Sprintf("%s: Death's Bargain! (-5 HP, +6 ATK for 8 turns)", p.class.Name))
+
+	case "construct":
+		system.ApplyEffect(g.world, p.id, component.ActiveEffect{
+			Kind: component.EffectAttackBoost, Magnitude: 6, TurnsRemaining: 6,
+		})
+		system.ApplyEffect(g.world, p.id, component.ActiveEffect{
+			Kind: component.EffectSelfBurn, Magnitude: 2, TurnsRemaining: 6,
+		})
+		g.addMessage(fmt.Sprintf("%s: Overclock! (+6 ATK for 6 turns, -2 HP/turn burn)", p.class.Name))
+
+	case "dancer":
+		system.ApplyEffect(g.world, p.id, component.ActiveEffect{
+			Kind: component.EffectInvisible, Magnitude: 1, TurnsRemaining: 8,
+		})
+		g.addMessage(fmt.Sprintf("%s: Vanish! Invisible for 8 turns.", p.class.Name))
+
+	case "oracle":
+		for y := 0; y < g.gmap.Height; y++ {
+			for x := 0; x < g.gmap.Width; x++ {
+				if g.gmap.At(x, y).Walkable {
+					g.gmap.At(x, y).Explored = true
+				}
+			}
+		}
+		g.addMessage(fmt.Sprintf("%s: Farsight — entire floor revealed!", p.class.Name))
+
+	case "symbiont":
+		g.coopRestorePlayerHP(p, 10)
+		system.ApplyEffect(g.world, p.id, component.ActiveEffect{
+			Kind: component.EffectAttackBoost, Magnitude: 4, TurnsRemaining: 6,
+		})
+		g.addMessage(fmt.Sprintf("%s: Parasite Surge! (+10 HP, +4 ATK for 6 turns)", p.class.Name))
 	}
 }
 

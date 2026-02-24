@@ -11,7 +11,8 @@ import (
 
 // DrawHUD renders the status bar and message log at the bottom of the screen.
 // bonusATK and bonusDEF are the combined effect+equipment bonus values computed by game.go.
-func (r *Renderer) DrawHUD(w *ecs.World, playerID ecs.EntityID, floor int, className string, messages []string, bonusATK, bonusDEF int) {
+// abilityName is the class active ability name; abilityCooldown is turns remaining (0 = ready).
+func (r *Renderer) DrawHUD(w *ecs.World, playerID ecs.EntityID, floor int, className string, messages []string, bonusATK, bonusDEF int, abilityName string, abilityCooldown int) {
 	_, screenH := r.screen.Size()
 	hudY := screenH - 5
 
@@ -68,8 +69,16 @@ func (r *Renderer) DrawHUD(w *ecs.World, playerID ecs.EntityID, floor int, class
 	if !inv.OffHand.IsEmpty() {
 		offG = inv.OffHand.Glyph
 	}
-	equipLine := fmt.Sprintf("HEAD:%s  BODY:%s  FEET:%s  WEAP:%s  OFHND:%s  [i]nventory",
-		headG, bodyG, feetG, weapG, offG)
+	abilityStatus := ""
+	if abilityName != "" {
+		if abilityCooldown > 0 {
+			abilityStatus = fmt.Sprintf("  [z]%s:%dt", abilityName, abilityCooldown)
+		} else {
+			abilityStatus = fmt.Sprintf("  [z]%s:RDY", abilityName)
+		}
+	}
+	equipLine := fmt.Sprintf("HEAD:%s  BODY:%s  FEET:%s  WEAP:%s  OFHND:%s  [i]nventory%s",
+		headG, bodyG, feetG, weapG, offG, abilityStatus)
 	r.drawText(0, hudY+2, equipLine, tcell.StyleDefault.Foreground(tcell.ColorAqua))
 
 	// Rows 3-4: last 2 wrapped message lines

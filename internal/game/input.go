@@ -21,6 +21,7 @@ const (
 	ActionDescend
 	ActionAscend
 	ActionQuit
+	ActionSpecialAbility
 )
 
 // keyToAction maps a tcell key event to a game action.
@@ -69,6 +70,8 @@ func keyToAction(ev *tcell.EventKey) Action {
 		return ActionAscend
 	case 'q', 'Q':
 		return ActionQuit
+	case 'z', 'Z':
+		return ActionSpecialAbility
 	}
 	return ActionNone
 }

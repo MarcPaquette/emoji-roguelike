@@ -64,6 +64,8 @@ type Game struct {
 	furnitureDEF         int  // cumulative DEF bonus from furniture
 	furnitureThorns      int  // damage reflected per hit taken
 	furnitureKillRestore bool // restore 1 HP on each kill
+	// Active ability state.
+	specialCooldown int // turns until z-ability can be used again
 }
 
 // New creates and returns a Game with screen initialized.
@@ -103,6 +105,7 @@ func (g *Game) resetForRun() {
 	g.furnitureDEF = 0
 	g.furnitureThorns = 0
 	g.furnitureKillRestore = false
+	g.specialCooldown = 0
 }
 
 // loadFloor generates and populates the given floor.
@@ -184,22 +187,6 @@ func (g *Game) loadFloor(floor int) {
 
 	// Apply class passive effects on floor 1 only.
 	if floor == 1 {
-		if g.selectedClass.StartInvisible > 0 {
-			system.ApplyEffect(g.world, g.playerID, component.ActiveEffect{
-				Kind:           component.EffectInvisible,
-				Magnitude:      1,
-				TurnsRemaining: g.selectedClass.StartInvisible,
-			})
-		}
-		if g.selectedClass.StartRevealMap {
-			for y := 0; y < gmap.Height; y++ {
-				for x := 0; x < gmap.Width; x++ {
-					if gmap.At(x, y).Walkable {
-						gmap.At(x, y).Explored = true
-					}
-				}
-			}
-		}
 		// Spawn class start items adjacent to the player.
 		for i, glyph := range g.selectedClass.StartItems {
 			offsets := [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
@@ -210,6 +197,11 @@ func (g *Game) loadFloor(floor int) {
 			}
 			factory.NewItemByGlyph(g.world, glyph, ix, iy)
 		}
+	}
+
+	// Reset ability cooldown on each floor entry for classes with AbilityFreeOnFloor.
+	if g.selectedClass.AbilityFreeOnFloor {
+		g.specialCooldown = 0
 	}
 
 	system.UpdateFOV(g.world, g.gmap, g.playerID, g.fovRadius)
@@ -249,7 +241,7 @@ func (g *Game) Run() {
 			equipATK, equipDEF := g.equipBonuses()
 			bonusATK := system.GetAttackBonus(g.world, g.playerID) + equipATK
 			bonusDEF := system.GetDefenseBonus(g.world, g.playerID) + equipDEF
-			g.renderer.DrawHUD(g.world, g.playerID, g.floor, g.selectedClass.Name, g.messages, bonusATK, bonusDEF)
+			g.renderer.DrawHUD(g.world, g.playerID, g.floor, g.selectedClass.Name, g.messages, bonusATK, bonusDEF, g.selectedClass.AbilityName, g.specialCooldown)
 
 			ev := g.screen.PollEvent()
 			switch ev := ev.(type) {
@@ -266,7 +258,7 @@ func (g *Game) Run() {
 						equipATK, equipDEF := g.equipBonuses()
 						bonusATK := system.GetAttackBonus(g.world, g.playerID) + equipATK
 						bonusDEF := system.GetDefenseBonus(g.world, g.playerID) + equipDEF
-						g.renderer.DrawHUD(g.world, g.playerID, g.floor, g.selectedClass.Name, g.messages, bonusATK, bonusDEF)
+						g.renderer.DrawHUD(g.world, g.playerID, g.floor, g.selectedClass.Name, g.messages, bonusATK, bonusDEF, g.selectedClass.AbilityName, g.specialCooldown)
 					}) {
 						return
 					}
@@ -297,6 +289,12 @@ func (g *Game) processAction(action Action) {
 		g.runLog.TurnsPlayed++
 		g.applyPoisonDamage()
 		system.TickEffects(g.world)
+		if g.specialCooldown > 0 {
+			g.specialCooldown--
+		}
+		if g.selectedClass.PassiveRegen > 0 && g.runLog.TurnsPlayed%g.selectedClass.PassiveRegen == 0 {
+			g.restorePlayerHP(1)
+		}
 		hits := system.ProcessAI(g.world, g.gmap, g.playerID, g.rng)
 		for _, h := range hits {
 			if h.Damage > 0 {
@@ -354,6 +352,17 @@ func (g *Game) processAction(action Action) {
 	case ActionInventory:
 		turnUsed = g.runInventoryScreen()
 
+	case ActionSpecialAbility:
+		if g.selectedClass.AbilityCooldown == 0 {
+			g.addMessage("No special ability.")
+		} else if g.specialCooldown > 0 {
+			g.addMessage(fmt.Sprintf("%s recharging (%d turns).", g.selectedClass.AbilityName, g.specialCooldown))
+		} else {
+			g.useSpecialAbility()
+			g.specialCooldown = g.selectedClass.AbilityCooldown
+			turnUsed = true
+		}
+
 	default:
 		dx, dy := actionToDelta(action)
 		if dx != 0 || dy != 0 {
@@ -396,6 +405,10 @@ func (g *Game) processAction(action Action) {
 						g.restorePlayerHP(g.selectedClass.KillRestoreHP)
 						g.addMessage(fmt.Sprintf("The kill feeds you. (+%d HP)", g.selectedClass.KillRestoreHP))
 					}
+					if g.selectedClass.KillHealChance > 0 && g.rng.Intn(100) < g.selectedClass.KillHealChance {
+						g.restorePlayerHP(2)
+						g.addMessage("Wild magic sparks! (+2 HP)")
+					}
 					if g.furnitureKillRestore {
 						g.restorePlayerHP(1)
 					}
@@ -421,6 +434,12 @@ func (g *Game) processAction(action Action) {
 		g.runLog.TurnsPlayed++
 		g.applyPoisonDamage()
 		system.TickEffects(g.world)
+		if g.specialCooldown > 0 {
+			g.specialCooldown--
+		}
+		if g.selectedClass.PassiveRegen > 0 && g.runLog.TurnsPlayed%g.selectedClass.PassiveRegen == 0 {
+			g.restorePlayerHP(1)
+		}
 		hits := system.ProcessAI(g.world, g.gmap, g.playerID, g.rng)
 		for _, h := range hits {
 			if h.Damage > 0 {
@@ -746,6 +765,65 @@ func (g *Game) teleportPlayer() {
 	x, y := room.Center()
 	g.world.Add(g.playerID, component.Position{X: x, Y: y})
 	system.UpdateFOV(g.world, g.gmap, g.playerID, g.fovRadius)
+}
+
+// useSpecialAbility fires the class active ability (z key).
+func (g *Game) useSpecialAbility() {
+	switch g.selectedClass.ID {
+	case "arcanist":
+		g.teleportPlayer()
+		g.addMessage("Dimensional Rift tears open — you reappear elsewhere!")
+
+	case "revenant":
+		hpComp := g.world.Get(g.playerID, component.CHealth)
+		if hpComp == nil {
+			return
+		}
+		hp := hpComp.(component.Health)
+		if hp.Current <= 5 {
+			g.addMessage("Too wounded to bargain with death!")
+			g.specialCooldown = 0 // refund cooldown — no turn spent on non-use
+			return
+		}
+		hp.Current -= 5
+		g.world.Add(g.playerID, hp)
+		system.ApplyEffect(g.world, g.playerID, component.ActiveEffect{
+			Kind: component.EffectAttackBoost, Magnitude: 6, TurnsRemaining: 8,
+		})
+		g.addMessage("Death's Bargain struck! (-5 HP, +6 ATK for 8 turns)")
+
+	case "construct":
+		system.ApplyEffect(g.world, g.playerID, component.ActiveEffect{
+			Kind: component.EffectAttackBoost, Magnitude: 6, TurnsRemaining: 6,
+		})
+		system.ApplyEffect(g.world, g.playerID, component.ActiveEffect{
+			Kind: component.EffectSelfBurn, Magnitude: 2, TurnsRemaining: 6,
+		})
+		g.addMessage("Overclock engaged! (+6 ATK for 6 turns, -2 HP/turn burn)")
+
+	case "dancer":
+		system.ApplyEffect(g.world, g.playerID, component.ActiveEffect{
+			Kind: component.EffectInvisible, Magnitude: 1, TurnsRemaining: 8,
+		})
+		g.addMessage("Vanish! You fade from perception for 8 turns.")
+
+	case "oracle":
+		for y := 0; y < g.gmap.Height; y++ {
+			for x := 0; x < g.gmap.Width; x++ {
+				if g.gmap.At(x, y).Walkable {
+					g.gmap.At(x, y).Explored = true
+				}
+			}
+		}
+		g.addMessage("Farsight! The entire floor is revealed.")
+
+	case "symbiont":
+		g.restorePlayerHP(10)
+		system.ApplyEffect(g.world, g.playerID, component.ActiveEffect{
+			Kind: component.EffectAttackBoost, Magnitude: 4, TurnsRemaining: 6,
+		})
+		g.addMessage("Parasite Surge! (+10 HP, +4 ATK for 6 turns)")
+	}
 }
 
 func (g *Game) checkPlayerDead() {
