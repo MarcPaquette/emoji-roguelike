@@ -9,6 +9,8 @@ go build ./...          # compile everything
 go test ./...           # run all tests
 go test ./internal/ecs/ # run tests for a single package
 go test -run TestFoo ./internal/system/  # run one test by name
+go vet ./...            # static analysis (run before committing)
+go fix ./...            # update deprecated API usage
 go mod tidy             # sync go.sum after changing dependencies
 ./emoji-roguelike       # run the game (requires an emoji-capable terminal)
 ```
