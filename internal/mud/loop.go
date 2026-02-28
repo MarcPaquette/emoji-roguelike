@@ -82,7 +82,14 @@ func (s *Server) RunLoop(sess *Session) {
 				action := keyToAction(ev)
 				switch action {
 				case ActionQuit:
-					return
+					if confirmQuit(sess, eventCh) {
+						return
+					}
+					// Player cancelled — re-render and continue.
+					select {
+					case sess.RenderCh <- struct{}{}:
+					default:
+					}
 				case ActionInventory:
 					if sess.DeathCountdown == 0 {
 						s.RunInventory(sess, eventCh)
@@ -200,6 +207,61 @@ func runHelp(sess *Session, eventCh <-chan tcell.Event) {
 			sess.Screen.Sync()
 		case *tcell.EventKey:
 			return
+		}
+	}
+}
+
+// confirmQuit shows a "Really quit? (y/n)" prompt. Returns true if confirmed.
+func confirmQuit(sess *Session, eventCh <-chan tcell.Event) bool {
+	prompt := " Really disconnect? (y/n) "
+	width := len([]rune(prompt)) + 4
+	hdrStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true)
+	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+
+	draw := func() {
+		sess.Screen.Clear()
+		sw, sh := sess.Screen.Size()
+		boxH := 3
+		x0 := (sw - width) / 2
+		y0 := (sh - boxH) / 2
+
+		for col := x0; col < x0+width; col++ {
+			sess.Screen.SetContent(col, y0, '─', nil, borderStyle)
+			sess.Screen.SetContent(col, y0+boxH-1, '─', nil, borderStyle)
+		}
+		for row := y0; row < y0+boxH; row++ {
+			sess.Screen.SetContent(x0, row, '│', nil, borderStyle)
+			sess.Screen.SetContent(x0+width-1, row, '│', nil, borderStyle)
+		}
+		sess.Screen.SetContent(x0, y0, '┌', nil, borderStyle)
+		sess.Screen.SetContent(x0+width-1, y0, '┐', nil, borderStyle)
+		sess.Screen.SetContent(x0, y0+boxH-1, '└', nil, borderStyle)
+		sess.Screen.SetContent(x0+width-1, y0+boxH-1, '┘', nil, borderStyle)
+
+		px := x0 + 2
+		for _, r := range prompt {
+			sess.Screen.SetContent(px, y0+1, r, nil, hdrStyle)
+			px++
+		}
+		sess.Screen.Show()
+	}
+
+	for {
+		draw()
+		ev, ok := <-eventCh
+		if !ok {
+			return true // disconnected
+		}
+		switch ev := ev.(type) {
+		case *tcell.EventResize:
+			sess.Screen.Sync()
+		case *tcell.EventKey:
+			switch ev.Rune() {
+			case 'y', 'Y':
+				return true
+			default:
+				return false
+			}
 		}
 	}
 }
