@@ -199,9 +199,9 @@ var Classes = []ClassDef{
 	},
 }
 
-// FloorNames maps floor number (1-indexed) to its lore name.
+// FloorNames maps floor number (0-indexed) to its lore name.
 var FloorNames = [11]string{
-	"",
+	"Emberveil",
 	"Crystalline Labs",
 	"Bioluminescent Warrens",
 	"Resonance Engine",

@@ -41,6 +41,11 @@ type Session struct {
 	FurnitureThorns int
 	FurnitureKR     bool
 	SpecialCooldown int
+	Gold            int // current gold; earned by killing enemies, spent at shop
+
+	// PendingNPC is set by the tick goroutine to trigger a shop modal.
+	// Read and cleared in RunLoop's RenderCh handler (both under s.mu).
+	PendingNPC ecs.EntityID
 
 	// I/O
 	Screen   tcell.Screen

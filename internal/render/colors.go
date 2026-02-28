@@ -11,9 +11,16 @@ type FloorTiles struct {
 	DimFloor string // explored but not currently visible floor
 }
 
-// TileThemes maps floor number (1-indexed) to its tile set.
+// TileThemes maps floor number (0-indexed) to its tile set.
+// Index 0 is Emberveil, the starting city.
 var TileThemes = [11]FloorTiles{
-	{}, // index 0 unused
+	{
+		// Floor 0 — Emberveil: cobblestone city
+		Wall:     "🏠",
+		Floor:    "🟫",
+		DimWall:  "🌑",
+		DimFloor: "🔲",
+	},
 	{
 		// Floor 1 — Crystalline Labs: ice and frost
 		Wall:     "🧊",

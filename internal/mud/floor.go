@@ -30,7 +30,7 @@ type Floor struct {
 	StairsDownX, StairsDownY int
 
 	// StairsUpX/Y is where the up stairs tile is placed (first room center).
-	// Both are -1 for floor 1 which has no up stairs.
+	// Both are -1 for floor 0 (city) which has no up stairs.
 	StairsUpX, StairsUpY int
 
 	// RespawnCooldown drives enemy wave respawning.
@@ -38,6 +38,9 @@ type Floor struct {
 	//  N > 0 = ticks remaining before wave spawns
 	//  0 = spawn wave this tick
 	RespawnCooldown int
+
+	// SafeZone disables combat and AI ticking (used for the starting city).
+	SafeZone bool
 }
 
 // newFloor generates a fresh dungeon floor using the same level config as the
@@ -70,9 +73,14 @@ func newFloor(num int, rng *rand.Rand) *Floor {
 		last := gmap.Rooms[len(gmap.Rooms)-1]
 		stairsDownX, stairsDownY = last.Center()
 	}
-	stairsUpX, stairsUpY := -1, -1 // -1 = not present (floor 1)
-	if num > 1 {
+	stairsUpX, stairsUpY := -1, -1 // -1 = not present (floor 0 / city)
+	if num > 0 {
 		stairsUpX, stairsUpY = px, py // stairs up shares spawn tile
+	}
+	// Floor 1 in MUD: manually place stairs-up tile so players can return to the city.
+	// (bsp.go places stairs-up only for num > 1; floor 1 needs special handling here.)
+	if num == 1 {
+		gmap.Set(px, py, gamemap.MakeStairsUp())
 	}
 
 	return &Floor{

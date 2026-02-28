@@ -179,15 +179,16 @@ func TestServerAddRemoveSession(t *testing.T) {
 
 	srv.AddSession(sess)
 
-	if sess.FloorNum != 1 {
-		t.Errorf("expected FloorNum=1, got %d", sess.FloorNum)
+	// Players now start on floor 0 (the city of Emberveil).
+	if sess.FloorNum != 0 {
+		t.Errorf("expected FloorNum=0 (city), got %d", sess.FloorNum)
 	}
 	if sess.PlayerID == ecs.NilEntity {
 		t.Error("expected a valid PlayerID after AddSession")
 	}
 
 	srv.mu.Lock()
-	floor := srv.floors[1]
+	floor := srv.floors[0]
 	posComp := floor.World.Get(sess.PlayerID, component.CPosition)
 	srv.mu.Unlock()
 
@@ -226,7 +227,7 @@ func TestServerMultipleSessionsDistinctColors(t *testing.T) {
 // ─── Stairs placement ─────────────────────────────────────────────────────────
 
 func TestStairsUpOnNonFirstFloor(t *testing.T) {
-	for floorNum := 2; floorNum <= 5; floorNum++ {
+	for floorNum := 1; floorNum <= 5; floorNum++ {
 		rng := rand.New(rand.NewSource(int64(floorNum) * 7))
 		floor := newFloor(floorNum, rng)
 
@@ -244,16 +245,21 @@ func TestStairsUpOnNonFirstFloor(t *testing.T) {
 	}
 }
 
-func TestNoStairsUpOnFloor1(t *testing.T) {
+func TestFloor1HasStairsUp(t *testing.T) {
+	// In the MUD, floor 1 has stairs up so players can return to Emberveil.
 	rng := rand.New(rand.NewSource(42))
 	floor := newFloor(1, rng)
 
+	found := false
 	for y := range floor.GMap.Height {
 		for x := range floor.GMap.Width {
 			if floor.GMap.At(x, y).Kind == gamemap.TileStairsUp {
-				t.Errorf("floor 1 should not have stairs up (found at %d,%d)", x, y)
+				found = true
 			}
 		}
+	}
+	if !found {
+		t.Error("floor 1 in MUD should have stairs up (to return to Emberveil)")
 	}
 }
 
@@ -283,22 +289,22 @@ func TestFloorTransitionPreservesHP(t *testing.T) {
 	sess := newTestSession(0, srv)
 	srv.AddSession(sess)
 
-	// Reduce player HP on floor 1.
+	// Player starts on floor 0 (city). Reduce HP there.
 	srv.mu.Lock()
-	floor1 := srv.floors[1]
-	if hp := floor1.World.Get(sess.PlayerID, component.CHealth); hp != nil {
+	floor0 := srv.floors[0]
+	if hp := floor0.World.Get(sess.PlayerID, component.CHealth); hp != nil {
 		h := hp.(component.Health)
 		h.Current = 5
-		floor1.World.Add(sess.PlayerID, h)
+		floor0.World.Add(sess.PlayerID, h)
 	}
-	// Descend to floor 2.
-	srv.transitionFloorLocked(sess, 2)
-	floor2 := srv.floors[2]
-	hpComp := floor2.World.Get(sess.PlayerID, component.CHealth)
+	// Descend to floor 1.
+	srv.transitionFloorLocked(sess, 1)
+	floor1 := srv.floors[1]
+	hpComp := floor1.World.Get(sess.PlayerID, component.CHealth)
 	srv.mu.Unlock()
 
 	if hpComp == nil {
-		t.Fatal("player has no Health component on floor 2")
+		t.Fatal("player has no Health component on floor 1")
 	}
 	h := hpComp.(component.Health)
 	if h.Current != 5 {
@@ -311,6 +317,7 @@ func TestFloorTransitionDescendLandsNearStairsUp(t *testing.T) {
 	sess := newTestSession(0, srv)
 	srv.AddSession(sess)
 
+	// Transition from floor 0 (city) to floor 2 directly.
 	srv.mu.Lock()
 	srv.transitionFloorLocked(sess, 2)
 	floor2 := srv.floors[2]

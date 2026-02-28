@@ -51,13 +51,13 @@ func (s *Server) NextSessionID() (int, tcell.Color) {
 	return id, color
 }
 
-// NewServer creates a Server and pre-generates floor 1.
+// NewServer creates a Server and pre-generates floor 0 (the city of Emberveil).
 func NewServer(rng *rand.Rand) *Server {
 	s := &Server{
 		floors: make(map[int]*Floor),
 		rng:    rng,
 	}
-	s.floors[1] = newFloor(1, rand.New(rand.NewSource(rng.Int63())))
+	s.floors[0] = newCityFloor(rand.New(rand.NewSource(rng.Int63())))
 	return s
 }
 
@@ -70,7 +70,7 @@ func (s *Server) Run() {
 	}
 }
 
-// AddSession registers a new session and spawns the player entity on floor 1.
+// AddSession registers a new session and spawns the player entity on floor 0 (the city).
 // Must be called after the session's Class is set.
 // The caller must NOT hold s.mu.
 func (s *Server) AddSession(sess *Session) {
@@ -78,8 +78,8 @@ func (s *Server) AddSession(sess *Session) {
 	defer s.mu.Unlock()
 
 	s.sessions = append(s.sessions, sess)
-	s.spawnPlayerLocked(sess, 1)
-	globalMessage(s.sessions, fmt.Sprintf("🌟 %s has entered the dungeon!", sess.Name))
+	s.spawnPlayerLocked(sess, 0)
+	globalMessage(s.sessions, fmt.Sprintf("🌟 %s has arrived in Emberveil!", sess.Name))
 }
 
 // RemoveSession deregisters a session and removes the player entity from the world.
@@ -148,6 +148,24 @@ func (s *Server) tick() {
 // tickFloorLocked advances AI and effects for one floor.
 // Caller must hold s.mu.
 func (s *Server) tickFloorLocked(floor *Floor) {
+	// Safe zones (e.g. the city) skip combat and AI but still tick player cooldowns.
+	if floor.SafeZone {
+		for _, sess := range s.sessions {
+			if sess.FloorNum != floor.Num || sess.DeathCountdown != 0 {
+				continue
+			}
+			if sess.SpecialCooldown > 0 {
+				sess.SpecialCooldown--
+			}
+			sess.TurnCount++
+			if sess.Class.PassiveRegen > 0 && sess.TurnCount%sess.Class.PassiveRegen == 0 {
+				restoreHP(floor.World, sess.PlayerID, 1)
+			}
+			sess.RunLog.TurnsPlayed++
+		}
+		return
+	}
+
 	// Collect live player IDs on this floor.
 	var playerIDs []ecs.EntityID
 	for _, sess := range s.sessions {
@@ -314,7 +332,7 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 			return
 		case tile.Kind == gamemap.TileStairsDown && sess.FloorNum >= MaxFloors:
 			sess.AddMessage("There is nowhere further to descend.")
-		case tile.Kind == gamemap.TileStairsUp && sess.FloorNum > 1:
+		case tile.Kind == gamemap.TileStairsUp && sess.FloorNum > 0:
 			s.transitionFloorLocked(sess, sess.FloorNum-1)
 			return
 		case action == ActionDescend:
@@ -330,7 +348,7 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 		}
 		pos := posComp.(component.Position)
 		tile := floor.GMap.At(pos.X, pos.Y)
-		if tile.Kind == gamemap.TileStairsUp && sess.FloorNum > 1 {
+		if tile.Kind == gamemap.TileStairsUp && sess.FloorNum > 0 {
 			s.transitionFloorLocked(sess, sess.FloorNum-1)
 		} else {
 			sess.AddMessage("There are no stairs up here.")
@@ -362,11 +380,20 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 			s.checkInscriptionLocked(floor, sess)
 
 		case system.MoveInteract:
-			s.interactFurnitureLocked(floor, sess, target)
+			if npc := floor.World.Get(target, component.CNPC); npc != nil {
+				s.interactNPCLocked(floor, sess, target, npc.(component.NPC))
+			} else {
+				s.interactFurnitureLocked(floor, sess, target)
+			}
 
 		case system.MoveAttack:
 			// Don't attack other players.
 			if s.isPlayerEntity(target) {
+				return
+			}
+			// No combat in safe zones.
+			if floor.SafeZone {
+				sess.AddMessage("Emberveil is a place of peace. Violence is forbidden here.")
 				return
 			}
 			name := entityGlyph(floor.World, target)
@@ -379,7 +406,10 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 			sess.RunLog.DamageDealt += res.Damage
 			if res.Killed {
 				sess.RunLog.EnemiesKilled[name]++
-				floorMessage(s.sessions, floor.Num, fmt.Sprintf("%s kills the %s!", sess.Name, name))
+				gold := floor.Rng.Intn(4) + 1
+				sess.Gold += gold
+				sess.RunLog.GoldEarned += gold
+				floorMessage(s.sessions, floor.Num, fmt.Sprintf("%s kills the %s! (+%d💰)", sess.Name, name, gold))
 				if !sess.DiscoveredEnemies[name] {
 					sess.DiscoveredEnemies[name] = true
 					if lore, ok := assets.EnemyLore[name]; ok {
@@ -514,7 +544,9 @@ func (s *Server) transitionFloorLocked(sess *Session, targetFloor int) {
 	sess.Renderer = render.NewRenderer(sess.Screen, targetFloor)
 	sess.Renderer.CenterOn(spawnX, spawnY)
 
-	if targetFloor > fromFloor {
+	if targetFloor == 0 {
+		sess.AddMessage(fmt.Sprintf("%s returns to Emberveil.", sess.Name))
+	} else if targetFloor > fromFloor {
 		sess.AddMessage(fmt.Sprintf("%s descends into %s (Floor %d).", sess.Name, assets.FloorNames[targetFloor], targetFloor))
 	} else {
 		sess.AddMessage(fmt.Sprintf("%s ascends to %s (Floor %d).", sess.Name, assets.FloorNames[targetFloor], targetFloor))
@@ -554,8 +586,8 @@ func (s *Server) spawnPlayerLocked(sess *Session, floorNum int) {
 		}
 	}
 
-	// Spawn class start items adjacent to the player (floor 1 only).
-	if floorNum == 1 {
+	// Spawn class start items adjacent to the player (city spawn only).
+	if floorNum == 0 {
 		for i, glyph := range sess.Class.StartItems {
 			offsets := [][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
 			ox, oy := offsets[i%len(offsets)][0], offsets[i%len(offsets)][1]
@@ -577,7 +609,7 @@ func (s *Server) spawnPlayerLocked(sess *Session, floorNum int) {
 	sess.Renderer.CenterOn(sx, sy)
 }
 
-// respawnLocked resets a dead session and spawns them back on floor 1.
+// respawnLocked resets a dead session and returns them to Emberveil (floor 0).
 // Caller must hold s.mu.
 func (s *Server) respawnLocked(sess *Session) {
 	// Destroy old entity if still present.
@@ -601,10 +633,10 @@ func (s *Server) respawnLocked(sess *Session) {
 	sess.FovRadius = sess.Class.FOVRadius
 	sess.BaseMaxHP = sess.Class.MaxHP
 	sess.PlayerID = ecs.NilEntity
+	sess.Gold = 0
 
-	sess.AddMessage("You respawn...")
-	s.spawnPlayerLocked(sess, 1)
-	sess.AddMessage(fmt.Sprintf("You enter the dungeon as a %s.", sess.Class.Name))
+	sess.AddMessage("You respawn in Emberveil...")
+	s.spawnPlayerLocked(sess, 0)
 }
 
 // ─── Per-session rendering ────────────────────────────────────────────────────
@@ -639,8 +671,8 @@ func (s *Server) RenderSession(sess *Session) {
 	bonusATK := system.GetAttackBonus(floor.World, sess.PlayerID) + equipATK
 	bonusDEF := system.GetDefenseBonus(floor.World, sess.PlayerID) + equipDEF
 
-	// Embed player count in className field for HUD display.
-	className := fmt.Sprintf("%s [%d online]", sess.Class.Name, len(s.sessions))
+	// Embed player count and gold in className field for HUD display.
+	className := fmt.Sprintf("%s [%d online] 💰%d", sess.Class.Name, len(s.sessions), sess.Gold)
 
 	sess.Renderer.DrawHUD(floor.World, sess.PlayerID, sess.FloorNum, className,
 		sess.Messages, bonusATK, bonusDEF, sess.Class.AbilityName, sess.SpecialCooldown)
@@ -857,6 +889,35 @@ func (s *Server) tryPickupLocked(floor *Floor, sess *Session) {
 	sess.AddMessage("Nothing to pick up here.")
 }
 
+// interactNPCLocked handles a player bumping into an NPC.
+// Caller must hold s.mu.
+func (s *Server) interactNPCLocked(floor *Floor, sess *Session, _ ecs.EntityID, npc component.NPC) {
+	switch npc.Kind {
+	case component.NPCKindHealer:
+		hp := floor.World.Get(sess.PlayerID, component.CHealth).(component.Health)
+		if hp.Current == hp.Max {
+			line := npc.Lines[floor.Rng.Intn(len(npc.Lines))]
+			sess.AddMessage(fmt.Sprintf("💬 %s: \"%s\"", npc.Name, line))
+			return
+		}
+		old := hp.Current
+		hp.Current = hp.Max
+		floor.World.Add(sess.PlayerID, hp)
+		sess.AddMessage(fmt.Sprintf("✨ %s heals you to full! (%d → %d HP)", npc.Name, old, hp.Max))
+
+	case component.NPCKindShop:
+		sess.PendingNPC = 1 // any non-zero signals RunShop; exact ID not needed
+
+	case component.NPCKindAnimal:
+		line := npc.Lines[floor.Rng.Intn(len(npc.Lines))]
+		sess.AddMessage(line) // no speech marks for animals
+
+	default: // NPCKindDialogue
+		line := npc.Lines[floor.Rng.Intn(len(npc.Lines))]
+		sess.AddMessage(fmt.Sprintf("💬 %s: \"%s\"", npc.Name, line))
+	}
+}
+
 // interactFurnitureLocked applies a furniture bonus to the player.
 func (s *Server) interactFurnitureLocked(floor *Floor, sess *Session, id ecs.EntityID) {
 	fc := floor.World.Get(id, component.CFurniture)
@@ -865,6 +926,9 @@ func (s *Server) interactFurnitureLocked(floor *Floor, sess *Session, id ecs.Ent
 	}
 	f := fc.(component.Furniture)
 	sess.AddMessage(fmt.Sprintf("%s %s: %s", f.Glyph, f.Name, f.Description))
+	if f.IsRepeatable {
+		return // atmospheric furniture — description only, no bonus
+	}
 	if f.Used {
 		return
 	}

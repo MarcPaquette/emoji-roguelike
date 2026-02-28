@@ -1,9 +1,13 @@
 package assets
 
-// FloorLore holds 3 random atmospheric snippets per floor (index 0 unused).
+// FloorLore holds random atmospheric snippets per floor (index 0 = Emberveil).
 // One is picked at random on entry.
 var FloorLore = [11][]string{
-	{}, // floor 0 unused
+	{ // Floor 0 — Emberveil
+		"The warm lanterns of Emberveil greet you. The tower awaits.",
+		"You emerge from the depths into the familiar streets of Emberveil.",
+		"The city hums with life. For a moment, you remember what you're fighting for.",
+	},
 	{ // Floor 1 — Crystalline Labs
 		"Frost-rimed walls hum with contained experiments. Several containment fields are no longer containing anything.",
 		"Lab logs reference 'Phase III'. Phase I and II notes are conspicuously absent.",

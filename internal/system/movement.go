@@ -26,6 +26,17 @@ func TryMove(w *ecs.World, gmap *gamemap.GameMap, id ecs.EntityID, dx, dy int) (
 	pos := posComp.(component.Position)
 	nx, ny := pos.X+dx, pos.Y+dy
 
+	// Check for NPCs (interactable, non-hostile) before furniture and combat checks.
+	for _, eid := range w.Query(component.CNPC, component.CPosition) {
+		if eid == id {
+			continue
+		}
+		epos := w.Get(eid, component.CPosition).(component.Position)
+		if epos.X == nx && epos.Y == ny {
+			return MoveInteract, eid
+		}
+	}
+
 	// Check for furniture (interactable, non-hostile blockage) before combat check.
 	for _, eid := range w.Query(component.CFurniture, component.CPosition) {
 		if eid == id {

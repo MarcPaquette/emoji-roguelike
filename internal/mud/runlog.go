@@ -19,6 +19,7 @@ type RunLog struct {
 	InscriptionsRead int            `json:"inscriptions_read"`
 	DamageDealt      int            `json:"damage_dealt"`
 	DamageTaken      int            `json:"damage_taken"`
+	GoldEarned       int            `json:"gold_earned"`
 	CauseOfDeath     string         `json:"cause_of_death"`
 }
 

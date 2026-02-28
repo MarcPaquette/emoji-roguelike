@@ -107,9 +107,19 @@ func (s *Server) RunLoop(sess *Session) {
 
 		case <-sess.RenderCh:
 			s.mu.Lock()
+			pendingNPC := sess.PendingNPC
+			sess.PendingNPC = 0 // clear under lock
 			s.RenderSession(sess)
 			s.mu.Unlock()
 			sess.Screen.Show()
+			if pendingNPC != 0 && sess.DeathCountdown == 0 {
+				s.RunShop(sess, eventCh)
+				// Trigger re-render after shop closes.
+				select {
+				case sess.RenderCh <- struct{}{}:
+				default:
+				}
+			}
 		}
 	}
 }

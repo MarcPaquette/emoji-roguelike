@@ -15,15 +15,16 @@ const (
 // Furniture is a decorative entity that may grant a one-time permanent bonus
 // when the player steps onto it.
 type Furniture struct {
-	Glyph       string
-	Name        string
-	Description string
-	BonusATK    int
-	BonusDEF    int
-	BonusMaxHP  int
-	HealHP      int
-	PassiveKind int  // one of the Passive* constants above
-	Used        bool // prevents repeat bonus triggers
+	Glyph        string
+	Name         string
+	Description  string
+	BonusATK     int
+	BonusDEF     int
+	BonusMaxHP   int
+	HealHP       int
+	PassiveKind  int  // one of the Passive* constants above
+	Used         bool // prevents repeat bonus triggers
+	IsRepeatable bool // if true, description shown every time and Used is never set
 }
 
 func (Furniture) Type() ecs.ComponentType { return CFurniture }

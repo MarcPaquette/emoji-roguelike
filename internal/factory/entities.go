@@ -186,6 +186,21 @@ func NewFurniture(w *ecs.World, entry generate.FurnitureSpawnEntry, x, y int) ec
 	return id
 }
 
+// NewNPC creates a non-hostile, interactable NPC entity at (x, y).
+func NewNPC(w *ecs.World, name, glyph string, kind component.NPCKind, lines []string, x, y int) ecs.EntityID {
+	id := w.CreateEntity()
+	w.Add(id, component.Position{X: x, Y: y})
+	w.Add(id, component.Renderable{
+		Glyph:       glyph,
+		FGColor:     tcell.ColorAqua,
+		BGColor:     tcell.ColorDefault,
+		RenderOrder: 5,
+	})
+	w.Add(id, component.TagBlocking{})
+	w.Add(id, component.NPC{Name: name, Kind: kind, Lines: lines})
+	return id
+}
+
 // NewStairsDown creates a stairs-down entity.
 func NewStairsDown(w *ecs.World, x, y int) ecs.EntityID {
 	id := w.CreateEntity()
