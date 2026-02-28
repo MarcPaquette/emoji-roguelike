@@ -22,7 +22,7 @@ import (
 )
 
 // TickInterval is the wall-clock period between world ticks.
-const TickInterval = 500 * time.Millisecond
+const TickInterval = 100 * time.Millisecond
 
 // DeathTicks is the number of ticks a dead player waits before respawning.
 const DeathTicks = 4

@@ -75,6 +75,10 @@ func (r *Renderer) drawMap(gmap *gamemap.GameMap) {
 					glyph = "🔽"
 				case gamemap.TileStairsUp:
 					glyph = "🔼"
+				case gamemap.TileGrass:
+					glyph = "🌿"
+				case gamemap.TileWater:
+					glyph = "🌊"
 				default:
 					glyph = theme.Floor
 				}
@@ -89,6 +93,10 @@ func (r *Renderer) drawMap(gmap *gamemap.GameMap) {
 					glyph = "🔽"
 				case gamemap.TileStairsUp:
 					glyph = "🔼"
+				case gamemap.TileGrass:
+					glyph = "🟩"
+				case gamemap.TileWater:
+					glyph = "🟦"
 				default:
 					glyph = theme.DimFloor
 				}

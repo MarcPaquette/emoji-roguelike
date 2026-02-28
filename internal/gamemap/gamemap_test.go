@@ -70,6 +70,30 @@ func TestAt(t *testing.T) {
 	}
 }
 
+func TestGrassAndWaterTileProperties(t *testing.T) {
+	cases := []struct {
+		name         string
+		tile         Tile
+		walkable     bool
+		transparent  bool
+	}{
+		{"grass is walkable and transparent", MakeGrass(), true, true},
+		{"water is not walkable but transparent", MakeWater(), false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := New(3, 3)
+			m.Set(1, 1, tc.tile)
+			if got := m.IsWalkable(1, 1); got != tc.walkable {
+				t.Errorf("IsWalkable = %v; want %v", got, tc.walkable)
+			}
+			if got := m.IsTransparent(1, 1); got != tc.transparent {
+				t.Errorf("IsTransparent = %v; want %v", got, tc.transparent)
+			}
+		})
+	}
+}
+
 func TestIsTransparent(t *testing.T) {
 	cases := []struct {
 		name string

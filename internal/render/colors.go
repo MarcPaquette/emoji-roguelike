@@ -15,8 +15,8 @@ type FloorTiles struct {
 // Index 0 is Emberveil, the starting city.
 var TileThemes = [11]FloorTiles{
 	{
-		// Floor 0 — Emberveil: cobblestone city
-		Wall:     "🏠",
+		// Floor 0 — Emberveil: brick buildings on cobblestone streets
+		Wall:     "🧱",
 		Floor:    "🟫",
 		DimWall:  "🌑",
 		DimFloor: "🔲",

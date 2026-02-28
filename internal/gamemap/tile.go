@@ -9,6 +9,8 @@ const (
 	TileDoor
 	TileStairsUp
 	TileStairsDown
+	TileGrass  // walkable outdoor terrain (parks, fields)
+	TileWater  // non-walkable water (rivers, lakes)
 )
 
 // Tile holds the kind and visibility state for one map cell.
@@ -43,4 +45,14 @@ func MakeStairsDown() Tile {
 // MakeStairsUp returns an upward staircase tile.
 func MakeStairsUp() Tile {
 	return Tile{Kind: TileStairsUp, Walkable: true, Transparent: true}
+}
+
+// MakeGrass returns a walkable, transparent grass tile (outdoor terrain).
+func MakeGrass() Tile {
+	return Tile{Kind: TileGrass, Walkable: true, Transparent: true}
+}
+
+// MakeWater returns a non-walkable, transparent water tile (rivers, lakes).
+func MakeWater() Tile {
+	return Tile{Kind: TileWater, Walkable: false, Transparent: true}
 }
