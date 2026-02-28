@@ -198,7 +198,7 @@ func (g *CoopGame) Run() {
 func coopClassSelect(p *coopPlayer) assets.ClassDef {
 	selected := 0
 	for {
-		drawClassSelectScreen(p.screen, selected)
+		DrawClassSelectScreen(p.screen, selected)
 		ev := p.screen.PollEvent()
 		switch ev := ev.(type) {
 		case *tcell.EventResize:
@@ -549,43 +549,30 @@ func (g *CoopGame) tickWorld() {
 		}
 	}
 
-	// Determine AI target: nearest live player to the map centroid.
-	targetID := g.nearestLivePlayerID()
-	if targetID == ecs.NilEntity {
+	// Collect alive player IDs for multi-target AI.
+	var pids []ecs.EntityID
+	for _, p := range g.players {
+		if p.alive && p.id != ecs.NilEntity {
+			pids = append(pids, p.id)
+		}
+	}
+	if len(pids) == 0 {
 		return
 	}
 
-	// Record HP before AI runs so we can detect which player took damage.
-	hpBefore := [2]int{}
-	for i, p := range g.players {
-		if p.alive {
-			if hp := g.world.Get(p.id, component.CHealth); hp != nil {
-				hpBefore[i] = hp.(component.Health).Current
-			}
-		}
-	}
+	hits := system.ProcessAI(g.world, g.gmap, pids, g.rng)
 
-	hits := system.ProcessAI(g.world, g.gmap, targetID, g.rng)
-
-	// Calculate HP deltas to attribute damage and apply thorns.
+	// Attribute damage and apply thorns.
 	// Use the combined thorns of both players (cooperative benefit).
 	maxThorns := max(g.players[0].furnitureThorns, g.players[1].furnitureThorns)
 	for _, h := range hits {
 		if h.Damage > 0 {
-			// Attribute damage to whichever player lost HP.
-			for i, p := range g.players {
-				if !p.alive {
-					continue
-				}
-				hpNow := 0
-				if hp := g.world.Get(p.id, component.CHealth); hp != nil {
-					hpNow = hp.(component.Health).Current
-				}
-				if hpNow < hpBefore[i] {
-					delta := hpBefore[i] - hpNow
-					p.runLog.DamageTaken += delta
+			// Attribute damage directly via VictimID.
+			for _, p := range g.players {
+				if p.alive && p.id == h.VictimID {
+					p.runLog.DamageTaken += h.Damage
 					p.runLog.CauseOfDeath = h.EnemyGlyph
-					hpBefore[i] = hpNow // reset for next hit
+					break
 				}
 			}
 			// Thorns: reflect damage back to the attacker.
@@ -635,26 +622,6 @@ func (g *CoopGame) handleCoopHitMessage(h system.EnemyHitResult) {
 	}
 }
 
-// nearestLivePlayerID returns the live player entity ID closest to the map centre.
-// Used to give the AI a single chase target.
-func (g *CoopGame) nearestLivePlayerID() ecs.EntityID {
-	var best ecs.EntityID
-	bestDist := -1
-	cx, cy := g.gmap.Width/2, g.gmap.Height/2
-	for _, p := range g.players {
-		if !p.alive || p.id == ecs.NilEntity {
-			continue
-		}
-		pos := g.coopPlayerPosition(p)
-		dx, dy := pos.X-cx, pos.Y-cy
-		d := dx*dx + dy*dy
-		if best == ecs.NilEntity || d < bestDist {
-			best = p.id
-			bestDist = d
-		}
-	}
-	return best
-}
 
 // ─── per-player helpers ────────────────────────────────────────────────────
 

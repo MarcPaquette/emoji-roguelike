@@ -295,7 +295,7 @@ func (g *Game) processAction(action Action) {
 		if g.selectedClass.PassiveRegen > 0 && g.runLog.TurnsPlayed%g.selectedClass.PassiveRegen == 0 {
 			g.restorePlayerHP(1)
 		}
-		hits := system.ProcessAI(g.world, g.gmap, g.playerID, g.rng)
+		hits := system.ProcessAI(g.world, g.gmap, []ecs.EntityID{g.playerID}, g.rng)
 		for _, h := range hits {
 			if h.Damage > 0 {
 				g.runLog.DamageTaken += h.Damage
@@ -464,7 +464,7 @@ func (g *Game) processAction(action Action) {
 		if g.selectedClass.PassiveRegen > 0 && g.runLog.TurnsPlayed%g.selectedClass.PassiveRegen == 0 {
 			g.restorePlayerHP(1)
 		}
-		hits := system.ProcessAI(g.world, g.gmap, g.playerID, g.rng)
+		hits := system.ProcessAI(g.world, g.gmap, []ecs.EntityID{g.playerID}, g.rng)
 		for _, h := range hits {
 			if h.Damage > 0 {
 				g.runLog.DamageTaken += h.Damage

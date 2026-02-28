@@ -55,7 +55,7 @@ func TestProcessAINoPlayerPosition(t *testing.T) {
 	// Deliberately no CPosition.
 
 	rng := rand.New(rand.NewSource(0))
-	hits := ProcessAI(w, gmap, player, rng)
+	hits := ProcessAI(w, gmap, []ecs.EntityID{player}, rng)
 	if hits != nil {
 		t.Errorf("expected nil hits when player has no position; got %v", hits)
 	}
@@ -67,7 +67,7 @@ func TestAIStationaryNeverAttacks(t *testing.T) {
 	enemy := addEnemy(w, 6, 5, component.BehaviorStationary, 10)
 	startPos := w.Get(enemy, component.CPosition).(component.Position)
 
-	hits := ProcessAI(w, gmap, player, rng)
+	hits := ProcessAI(w, gmap, []ecs.EntityID{player}, rng)
 	if len(hits) != 0 {
 		t.Errorf("stationary enemy should never attack; got %d hit(s)", len(hits))
 	}
@@ -83,7 +83,7 @@ func TestAIChaseAttacksAdjacentPlayer(t *testing.T) {
 	// Place enemy 1 tile east of player (distance = 1, within sight).
 	addEnemy(w, 6, 5, component.BehaviorChase, 10)
 
-	hits := ProcessAI(w, gmap, player, rng)
+	hits := ProcessAI(w, gmap, []ecs.EntityID{player}, rng)
 	if len(hits) != 1 {
 		t.Fatalf("adjacent chase enemy should attack player; got %d hit(s)", len(hits))
 	}
@@ -99,7 +99,7 @@ func TestAIChaseIgnoresOutOfRangePlayer(t *testing.T) {
 	enemy := addEnemy(w, 10, 10, component.BehaviorChase, 3)
 	startPos := w.Get(enemy, component.CPosition).(component.Position)
 
-	hits := ProcessAI(w, gmap, player, rng)
+	hits := ProcessAI(w, gmap, []ecs.EntityID{player}, rng)
 	if len(hits) != 0 {
 		t.Errorf("out-of-range enemy should not attack; got %d hit(s)", len(hits))
 	}
@@ -115,7 +115,7 @@ func TestAICowardlyAttacksWhenAdjacent(t *testing.T) {
 	// dist = 1 ≤ 1.5 → attacks immediately.
 	addEnemy(w, 6, 5, component.BehaviorCowardly, 10)
 
-	hits := ProcessAI(w, gmap, player, rng)
+	hits := ProcessAI(w, gmap, []ecs.EntityID{player}, rng)
 	if len(hits) != 1 {
 		t.Fatalf("adjacent cowardly enemy should attack player; got %d hit(s)", len(hits))
 	}
@@ -127,7 +127,7 @@ func TestAICowardlyFleesWhenNotAdjacent(t *testing.T) {
 	w, gmap, player := newAIWorld(5, 5)
 	enemy := addEnemy(w, 8, 5, component.BehaviorCowardly, 10)
 
-	hits := ProcessAI(w, gmap, player, rng)
+	hits := ProcessAI(w, gmap, []ecs.EntityID{player}, rng)
 	if len(hits) != 0 {
 		t.Errorf("non-adjacent cowardly enemy should not attack; got %d hit(s)", len(hits))
 	}
@@ -135,5 +135,47 @@ func TestAICowardlyFleesWhenNotAdjacent(t *testing.T) {
 	endPos := w.Get(enemy, component.CPosition).(component.Position)
 	if endPos.X <= 8 {
 		t.Errorf("cowardly enemy should have moved east (away from player at x=5); got x=%d", endPos.X)
+	}
+}
+
+func TestAIMultiPlayerTargetsNearest(t *testing.T) {
+	// Two players: near at (2,0), far at (15,0).
+	// One chase enemy at (3,0) with sight range 5.
+	// Only the near player is within sight; enemy should attack them.
+	rng := rand.New(rand.NewSource(0))
+	w := ecs.NewWorld()
+	gmap := openMap(20, 20)
+
+	makePlayer := func(x, y int) ecs.EntityID {
+		p := w.CreateEntity()
+		w.Add(p, component.Position{X: x, Y: y})
+		w.Add(p, component.TagPlayer{})
+		w.Add(p, component.TagBlocking{})
+		w.Add(p, component.Combat{Attack: 3, Defense: 1})
+		w.Add(p, component.Health{Current: 30, Max: 30})
+		w.Add(p, component.Effects{})
+		return p
+	}
+
+	nearPlayer := makePlayer(2, 0)
+	farPlayer := makePlayer(15, 0)
+
+	// Enemy at (3,0), sight range 5 — nearPlayer (dist=1) is in range, farPlayer (dist=12) is not.
+	addEnemy(w, 3, 0, component.BehaviorChase, 5)
+
+	hits := ProcessAI(w, gmap, []ecs.EntityID{nearPlayer, farPlayer}, rng)
+	if len(hits) == 0 {
+		t.Fatal("expected enemy to attack the near player")
+	}
+	if hits[0].VictimID != nearPlayer {
+		t.Errorf("expected VictimID=%v (nearPlayer), got %v", nearPlayer, hits[0].VictimID)
+	}
+	if hits[0].Damage < 1 {
+		t.Errorf("expected damage >= 1, got %d", hits[0].Damage)
+	}
+	// Far player should not have taken damage.
+	farHP := w.Get(farPlayer, component.CHealth).(component.Health).Current
+	if farHP != 30 {
+		t.Errorf("far player should not have taken damage; HP=%d", farHP)
 	}
 }

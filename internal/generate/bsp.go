@@ -288,6 +288,13 @@ func Generate(cfg *Config) (*gamemap.GameMap, int, int) {
 		px, py = gmap.Rooms[0].Center()
 	}
 
+	// Place stairs up in first room for floors above floor 1.
+	if cfg.FloorNumber > 1 && len(gmap.Rooms) > 0 {
+		first := gmap.Rooms[0]
+		ux, uy := first.Center()
+		gmap.Set(ux, uy, gamemap.MakeStairsUp())
+	}
+
 	// Place stairs down in last room.
 	if len(gmap.Rooms) > 1 {
 		last := gmap.Rooms[len(gmap.Rooms)-1]

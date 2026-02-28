@@ -55,12 +55,13 @@ func (g *Game) runClassSelect() bool {
 
 // drawClassSelect renders the full class selection UI to the screen.
 func (g *Game) drawClassSelect(selected int) {
-	drawClassSelectScreen(g.screen, selected)
+	DrawClassSelectScreen(g.screen, selected)
 }
 
 // drawClassSelectScreen renders the class selection UI onto any tcell screen.
-// Extracted so cooperative mode can display it on individual player screens.
-func drawClassSelectScreen(screen tcell.Screen, selected int) {
+// DrawClassSelectScreen renders the class selection UI onto any tcell screen.
+// Exported so cooperative and MUD modes can display it on individual player screens.
+func DrawClassSelectScreen(screen tcell.Screen, selected int) {
 	screen.Clear()
 	w, _ := screen.Size()
 
