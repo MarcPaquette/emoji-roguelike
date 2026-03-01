@@ -2,6 +2,26 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Task Tracking (beads)
+
+Use `bd` (beads) for **all** task tracking and planning. Do NOT use TodoWrite, TaskCreate, or markdown files for task management.
+
+```bash
+bd ready                          # find available work (no blockers)
+bd list --status=open             # all open issues
+bd show <id>                      # detailed view with dependencies
+bd create --title="..." --description="..." --type=task|bug|feature --priority=2
+bd update <id> --status=in_progress  # claim work
+bd close <id>                     # mark complete
+bd close <id1> <id2> ...          # close multiple at once
+bd dep add <issue> <depends-on>   # add dependency
+bd blocked                        # show blocked issues
+```
+
+**Workflow:** `bd ready` → `bd show <id>` → `bd update <id> --status=in_progress` → do work → `bd close <id>` → git commit & push.
+
+Priority is 0–4 (0=critical, 2=medium, 4=backlog). Do NOT use `bd edit` (opens $EDITOR, blocks agents).
+
 ## Commands
 
 ```bash

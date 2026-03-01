@@ -35,6 +35,12 @@ func (r *Renderer) SetFloor(floor int) { r.floor = floor }
 // CenterOn recenters the camera on world position (x, y).
 func (r *Renderer) CenterOn(x, y int) { r.camera.Center(x, y) }
 
+// WorldToScreen converts world coordinates to screen coordinates.
+// visible is false when the position falls outside the viewport.
+func (r *Renderer) WorldToScreen(wx, wy int) (sx, sy int, visible bool) {
+	return r.camera.WorldToScreen(wx, wy)
+}
+
 // DrawFrame renders tiles, entities, and the HUD.
 func (r *Renderer) DrawFrame(w *ecs.World, gmap *gamemap.GameMap, playerID ecs.EntityID) {
 	r.screen.Clear()

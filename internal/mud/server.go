@@ -146,6 +146,11 @@ func (s *Server) tick() {
 		}
 	}
 
+	// 1b. Decay chat bubbles for all sessions.
+	for _, sess := range s.sessions {
+		sess.ChatBubbles = decayBubbles(sess.ChatBubbles)
+	}
+
 	// 2. Tick each active floor (effects, AI, passive regen, death checks).
 	for _, floor := range s.floors {
 		s.tickFloorLocked(floor)
@@ -688,6 +693,9 @@ func (s *Server) RenderSession(sess *Session) {
 	}
 
 	sess.Renderer.DrawFrame(floor.World, floor.GMap, sess.PlayerID)
+
+	// Draw chat bubbles above senders (after entities, before HUD).
+	s.drawChatBubbles(sess, floor)
 
 	// Compute bonuses for HUD.
 	equipATK, equipDEF := equipBonuses(floor.World, sess.PlayerID)

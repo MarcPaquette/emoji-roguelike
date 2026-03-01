@@ -24,6 +24,7 @@ const (
 	ActionSpecialAbility
 	ActionHelp
 	ActionUseStairs
+	ActionChat
 )
 
 // keyToAction maps a tcell key event to a game action.
@@ -91,6 +92,8 @@ func keyToAction(ev *tcell.EventKey) Action {
 		return ActionSpecialAbility
 	case '?':
 		return ActionHelp
+	case 't', 'T':
+		return ActionChat
 	}
 	return ActionNone
 }

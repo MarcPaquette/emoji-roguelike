@@ -64,6 +64,14 @@ func (s *Server) RunLoop(sess *Session) {
 		}
 	}()
 
+	// Show help screen on first join so new players learn the controls.
+	runHelp(sess, eventCh)
+	// Trigger initial render after help dismissal.
+	select {
+	case sess.RenderCh <- struct{}{}:
+	default:
+	}
+
 	for {
 		select {
 		case ev, ok := <-eventCh:
@@ -102,6 +110,18 @@ func (s *Server) RunLoop(sess *Session) {
 				case ActionHelp:
 					if sess.GetDeathCountdown() == 0 {
 						runHelp(sess, eventCh)
+						select {
+						case sess.RenderCh <- struct{}{}:
+						default:
+						}
+					}
+				case ActionChat:
+					if sess.GetDeathCountdown() == 0 {
+						if text, ok := s.RunChat(sess, eventCh); ok {
+							s.mu.Lock()
+							s.BroadcastChat(sess, text)
+							s.mu.Unlock()
+						}
 						select {
 						case sess.RenderCh <- struct{}{}:
 						default:
@@ -163,6 +183,7 @@ func runHelp(sess *Session, eventCh <-chan tcell.Event) {
 		"  i                   Inventory",
 		"  Enter               Use stairs",
 		"  z                   Special ability",
+		"  t                   Chat (proximity)",
 		"",
 		"── Stairs (alternate) ────────────────",
 		"  >                   Descend",

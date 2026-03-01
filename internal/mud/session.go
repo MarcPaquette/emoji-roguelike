@@ -64,6 +64,7 @@ type Session struct {
 	RunLog            RunLog
 	DiscoveredEnemies map[string]bool
 	TurnCount         int
+	ChatBubbles       []ChatBubble
 
 	// Render trigger: ticker sends here; session's goroutine drains and renders.
 	RenderCh chan struct{}
