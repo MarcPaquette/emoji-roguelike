@@ -32,10 +32,17 @@ go test -run TestFoo ./internal/system/  # run one test by name
 go vet ./...            # static analysis (run before committing)
 go fix ./...            # update deprecated API usage
 go mod tidy             # sync go.sum after changing dependencies
-./emoji-roguelike       # run the game (requires an emoji-capable terminal)
+./emoji-roguelike       # run single-player (requires emoji-capable terminal)
+
+# MUD server
+go build -o emoji-roguelike-server ./cmd/server
+./emoji-roguelike-server            # listens on :2222
+ssh localhost -p 2222               # connect as a player
 ```
 
-The binary requires a terminal with full emoji support (kitty, GNOME Terminal, iTerm2). Plain xterm will render emoji incorrectly.
+Go version: **1.25.4** — `min`/`max` builtins and `for i := range N` available.
+
+Both binaries require a terminal with full emoji support (kitty, GNOME Terminal, iTerm2). Plain xterm will render emoji incorrectly.
 
 ## Architecture
 
@@ -60,8 +67,11 @@ Pure data structs — zero logic. Each implements `Type() ComponentType`. The io
 | `CTagStairs` | 11 | marker |
 | `CInscription` | 12 | `Inscription{Text string}` |
 | `CItem` | 13 | `CItemComp{Item}` — wraps `component.Item` value for floor entities |
+| `CLoot` | 14 | `Loot` — loot drop data |
+| `CFurniture` | 15 | `Furniture{Glyph, Name, Description, BonusATK/DEF/MaxHP, HealHP, PassiveKind, Used, IsRepeatable}` |
+| `CNPC` | 16 | `NPC{Name, Kind, DialogueLines, Glyph}` — city NPCs (Dialogue/Healer/Shop/Animal) |
 
-**Next available:** 14. Never reuse a number.
+**Next available:** 17. Never reuse a number.
 
 ### Dependency rule (strict)
 ```
@@ -73,6 +83,8 @@ factory    ← ecs, component, generate, assets
 system     ← ecs, component, gamemap
 render     ← ecs, component, gamemap; NEVER imports system
 game       ← everything
+mud        ← ecs, component, gamemap, generate, factory, assets, system, render
+ssh        ← no game concepts (tcell.Tty adapter only)
 assets     ← generate only
 ```
 
@@ -80,43 +92,53 @@ assets     ← generate only
 BSP tree splits the map recursively until leaves are ≤ `MaxLeafSize`. Each terminal leaf gets one room carved into it. `connectChildren` walks the tree and carves L-shaped (or Z/straight) corridors between sibling rooms. `Populate` places enemies against a `EnemyBudget` point pool and scatters items.
 
 Difficulty is lerp'd over `t = (floor-1)/(MaxFloors-1)` in `game/levels.go`:
-- Map grows 40×20 → 80×45
-- `MaxLeafSize` shrinks 20 → 12 (more, smaller rooms)
-- `EnemyBudget` grows 5 → 40
+- Map grows 40×20 → 90×50
+- `MaxLeafSize` shrinks 20 → 10 (more, smaller rooms)
+- `EnemyBudget` grows 5 → 55
 
 ### Rendering (`internal/render/`)
 **Critical — emoji are 2 terminal columns wide.** All world X coordinates are multiplied by 2 on the way to the screen (`sx = (wx - OffsetX) * 2`). `putGlyph` writes the leading rune via `SetContent` then fills column `x+1` with a space to prevent artifacts.
 
 Tile glyphs are per-floor emoji defined in `render/colors.go` (`TileThemes[floorNum]`). Visible tiles use thematic emoji; explored-but-dark tiles use `🌑` (wall) / `🔲` (floor).
 
-The HUD occupies the bottom 5 terminal rows. `DrawHUD` signature: `(w, playerID, floor int, className string, messages []string)`.
+The HUD occupies the bottom 5 terminal rows. `DrawHUD` signature: `(w, playerID, floor int, className string, messages []string, bonusATK, bonusDEF int, abilityName string, abilityCooldown int)`.
 
 ### FOV (`internal/system/fov.go`)
 Recursive shadowcasting, 8 octants. **Variable roles matter:** `dy = -j` is the fixed row index; `dx` sweeps from `-j` to `0` within each row. The octant transform is `worldX = cx + dx*xx + dy*xy`. Mixing up which variable is fixed breaks the algorithm visibly (jagged non-circular shadows).
 
 ### Class system (`assets/theme.go`, `internal/game/classselect.go`)
-`ClassDef` holds base stats, FOV radius, and passive flags (`KillRestoreHP`, `StartInvisible`, `StartRevealMap`, `StartItems`). The selection screen runs once before `loadFloor(1)`. `factory.NewPlayer` takes a `ClassDef` and applies stats/glyph directly. Passives fire in `loadFloor` (floor 1 only) and in `processAction`'s kill branch. `Game.fovRadius` is set from the class and passed to every `UpdateFOV` call.
+`ClassDef` holds base stats, FOV radius, passive fields (`KillHealChance`, `PassiveRegen`, `StartItems`), and active ability fields (`AbilityName`, `AbilityCooldown`, `AbilityFreeOnFloor`). The selection screen runs once before `loadFloor(1)`. `factory.NewPlayer` takes a `ClassDef` and applies stats/glyph directly. `Game.fovRadius` is set from the class and passed to every `UpdateFOV` call.
+
+Active abilities fire on `z` key (`ActionSpecialAbility`). `Game.specialCooldown` tracks turns remaining. Classes with `AbilityFreeOnFloor=true` get cooldown reset each floor. `KillHealChance` (percentage) restores HP on kill. `PassiveRegen` (N turns) restores 1 HP every N turns.
 
 ### Game state machine (`internal/game/game.go`)
 States: `StatePlaying`, `StateInventory`, `StateDead`, `StateVictory`, `StateClassSelect`. The main loop in `Run()` skips rendering when not in `StatePlaying`. Floor transitions preserve the player's current HP (saved before `ecs.NewWorld()`, restored after `NewPlayer`).
 
-### Run logging (`internal/game/runlog.go`)
-Every completed run (death or victory) is appended as one JSON line to `~/.local/share/emoji-roguelike/runs.jsonl` (XDG: `$XDG_DATA_HOME/emoji-roguelike/runs.jsonl`). The `RunLog` struct (defined in `game.go`) is what gets serialised:
-
-```
-timestamp, victory, class, floors_reached, turns_played,
-enemies_killed{glyph→count}, items_used{glyph→count},
-inscriptions_read, damage_dealt, damage_taken, cause_of_death
-```
-
-`saveRunLog()` silently discards I/O errors so a full disk can never crash the game. Fields are set throughout gameplay; `Victory` and `Timestamp` are stamped in `Run()` just before `showEndScreen()`.
-
-Quick analysis with standard tools:
+### Run logging
+Two `RunLog` structs exist — single-player (`internal/game/runlog.go`) and MUD (`internal/mud/runlog.go`). Both append one JSON line per completed run to `~/.local/share/emoji-roguelike/runs.jsonl`. The MUD version adds a `gold_earned` field. `saveRunLog()` silently discards I/O errors.
 
 ```bash
 jq -r '.victory' ~/.local/share/emoji-roguelike/runs.jsonl | sort | uniq -c
 jq -r '.cause_of_death' ~/.local/share/emoji-roguelike/runs.jsonl | sort | uniq -c | sort -rn
 ```
+
+### Furniture system (`internal/component/furniture.go`, `assets/furniture.go`)
+Bump-to-interact objects placed in dungeon rooms (1–2 per room, 15% rare chance). Grant one-time bonuses (ATK/DEF/MaxHP/Heal) or passives (KeenEye, KillRestore, Thorns). `IsRepeatable=true` for city furniture (shows description every bump, no bonus). Furniture blocks movement; enemies cannot pass through. Bonuses persist across floors via `Game.furnitureATK/DEF/Thorns/KillRestore`.
+
+### MUD server (`internal/mud/`, `internal/ssh/`, `cmd/server/`)
+Multiplayer SSH server. N players share a persistent world with tick-based updates (500ms). One ticker goroutine + one goroutine per session. Key files:
+- `mud/server.go` — `Server`, `tick()`, action processing, floor transitions
+- `mud/session.go` — per-player state, FOV snapshot/apply
+- `mud/floor.go` — `Floor` struct, `newFloor()`, lazy floor generation
+- `mud/city.go` — Emberveil (Floor 0), 110×55 hand-crafted starting city with NPCs/shops
+- `mud/shop.go` — shop UI, `Session.Gold` currency (earned by killing enemies)
+- `mud/inventory.go` — modal inventory (reads from `eventCh`)
+- `ssh/tty.go` — `SessionTty` implements `tcell.Tty` over SSH
+
+Floor 0 is a safe zone (no combat/AI). Players spawn at city center, respawn there on death (gold reset). `Session.PendingNPC` triggers shop/healer/dialogue interactions. Floor 1+ have stairs UP to return to city.
+
+### NPC system (`component/npc.go`, `assets/city.go`)
+`CNPC=16`. NPCKind: Dialogue, Healer, Shop, Animal. Created via `factory.NewNPC()`. City NPCs defined in `assets/city.go` (`CityNPCs`, `CityAnimals`, `ShopCatalogue`).
 
 ## Testing
 
@@ -128,7 +150,7 @@ Every package that contains logic (not just data structs) must have tests. When 
 
 - Write tests for the new/changed behaviour before or alongside the implementation.
 - If modifying an existing function, check whether existing tests cover the new path; add cases if not.
-- Packages currently with tests: `ecs`, `gamemap`, `generate`, `system`, `factory`, `game`.
+- Packages currently with tests: `ecs`, `gamemap`, `generate`, `system`, `factory`, `game`, `mud`.
 
 ### Test writing rules
 
