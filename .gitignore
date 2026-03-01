@@ -9,3 +9,7 @@ server_host_key
 # Go test cache and coverage
 *.test
 *.out
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
