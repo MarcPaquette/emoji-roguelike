@@ -91,7 +91,7 @@ func (s *Server) RunLoop(sess *Session) {
 					default:
 					}
 				case ActionInventory:
-					if sess.DeathCountdown == 0 {
+					if sess.GetDeathCountdown() == 0 {
 						s.RunInventory(sess, eventCh)
 						// Trigger re-render after inventory closes.
 						select {
@@ -100,7 +100,7 @@ func (s *Server) RunLoop(sess *Session) {
 						}
 					}
 				case ActionHelp:
-					if sess.DeathCountdown == 0 {
+					if sess.GetDeathCountdown() == 0 {
 						runHelp(sess, eventCh)
 						select {
 						case sess.RenderCh <- struct{}{}:
@@ -119,7 +119,7 @@ func (s *Server) RunLoop(sess *Session) {
 			s.RenderSession(sess)
 			s.mu.Unlock()
 			sess.Screen.Show()
-			if pendingNPC != 0 && sess.DeathCountdown == 0 {
+			if pendingNPC != 0 && sess.GetDeathCountdown() == 0 {
 				s.RunShop(sess, eventCh)
 				// Trigger re-render after shop closes.
 				select {

@@ -25,6 +25,10 @@ func (s *Server) RunInventory(sess *Session, eventCh <-chan tcell.Event) bool {
 		return false
 	}
 	inv := invComp.(component.Inventory)
+	// Snapshot identity at inventory open: if the player dies/transitions
+	// while the modal is open, we discard the stale local copy.
+	snapshotFloor := sess.FloorNum
+	snapshotPlayer := sess.PlayerID
 	s.mu.Unlock()
 
 	panel := 0
@@ -55,11 +59,15 @@ func (s *Server) RunInventory(sess *Session, eventCh <-chan tcell.Event) bool {
 
 	save := func() {
 		s.mu.Lock()
+		defer s.mu.Unlock()
+		// Only write back if the player hasn't died or changed floors.
+		if sess.FloorNum != snapshotFloor || sess.PlayerID != snapshotPlayer {
+			return
+		}
 		if f, ok2 := s.floors[sess.FloorNum]; ok2 {
 			f.World.Add(sess.PlayerID, inv)
 			recalcMaxHP(f.World, sess)
 		}
-		s.mu.Unlock()
 	}
 
 	for {
@@ -148,20 +156,7 @@ func (s *Server) invUseConsumable(sess *Session, inv *component.Inventory, panel
 }
 
 func (s *Server) invDrop(sess *Session, inv *component.Inventory, panel int, cursor *int) string {
-	s.mu.Lock()
-	floor, ok := s.floors[sess.FloorNum]
-	if !ok {
-		s.mu.Unlock()
-		return "Cannot drop here."
-	}
-	posComp := floor.World.Get(sess.PlayerID, component.CPosition)
-	if posComp == nil {
-		s.mu.Unlock()
-		return "Cannot drop here."
-	}
-	pos := posComp.(component.Position)
-	s.mu.Unlock()
-
+	// Determine which item to drop from the local inventory copy first.
 	var item component.Item
 	if panel == 0 {
 		if *cursor < 0 || *cursor >= len(inv.Backpack) {
@@ -203,11 +198,20 @@ func (s *Server) invDrop(sess *Session, inv *component.Inventory, panel int, cur
 			return "Invalid slot."
 		}
 	}
+
+	// Single lock acquisition for both position read and item drop.
 	s.mu.Lock()
-	if f, ok := s.floors[sess.FloorNum]; ok {
-		factory.DropItem(f.World, item, pos.X, pos.Y)
+	defer s.mu.Unlock()
+	floor, ok := s.floors[sess.FloorNum]
+	if !ok {
+		return "Cannot drop here."
 	}
-	s.mu.Unlock()
+	posComp := floor.World.Get(sess.PlayerID, component.CPosition)
+	if posComp == nil {
+		return "Cannot drop here."
+	}
+	pos := posComp.(component.Position)
+	factory.DropItem(floor.World, item, pos.X, pos.Y)
 	return fmt.Sprintf("Dropped %s.", item.Name)
 }
 

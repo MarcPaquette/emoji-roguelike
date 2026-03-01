@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"emoji-roguelike/internal/mud"
 	internalssh "emoji-roguelike/internal/ssh"
@@ -32,6 +33,45 @@ import (
 	gossh "github.com/gliderlabs/ssh"
 	xssh "golang.org/x/crypto/ssh"
 )
+
+// allowedTerms is the set of TERM values we accept from SSH clients.
+// Anything not in this set is replaced with "xterm-256color".
+var allowedTerms = map[string]bool{
+	"xterm-256color":  true,
+	"xterm":           true,
+	"xterm-color":     true,
+	"screen-256color": true,
+	"screen":          true,
+	"tmux-256color":   true,
+	"tmux":            true,
+	"linux":           true,
+	"vt100":           true,
+	"rxvt-unicode-256color": true,
+}
+
+const maxUsernameLen = 16
+
+// sanitizeName cleans a username for display: strips non-printable runes and
+// truncates to maxUsernameLen.
+func sanitizeName(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if unicode.IsPrint(r) && !unicode.IsControl(r) {
+			b.WriteRune(r)
+			if b.Len() >= maxUsernameLen {
+				break
+			}
+		}
+	}
+	s := b.String()
+	// Truncate to maxUsernameLen runes (the byte check above is approximate
+	// for multi-byte runes, so do a rune-level trim).
+	runes := []rune(s)
+	if len(runes) > maxUsernameLen {
+		runes = runes[:maxUsernameLen]
+	}
+	return string(runes)
+}
 
 func main() {
 	port := flag.Int("port", 2222, "SSH server port")
@@ -46,7 +86,9 @@ func main() {
 	go srv.Run()
 
 	sshSrv := &gossh.Server{
-		Addr: fmt.Sprintf(":%d", *port),
+		Addr:        fmt.Sprintf(":%d", *port),
+		IdleTimeout: 10 * time.Minute,
+		MaxTimeout:  4 * time.Hour,
 		Handler: func(s gossh.Session) {
 			handleSession(srv, s)
 		},
@@ -74,7 +116,10 @@ func handleSession(srv *mud.Server, s gossh.Session) {
 	term := "xterm-256color"
 	for _, env := range s.Environ() {
 		if strings.HasPrefix(env, "TERM=") {
-			term = env[5:]
+			candidate := env[5:]
+			if allowedTerms[candidate] {
+				term = candidate
+			}
 			break
 		}
 	}
@@ -95,9 +140,12 @@ func handleSession(srv *mud.Server, s gossh.Session) {
 	defer screen.Fini()
 
 	// Use SSH username as display name, fallback to remote address.
-	name := s.User()
+	name := sanitizeName(s.User())
 	if name == "" || name == "git" {
-		name = s.RemoteAddr().String()
+		name = sanitizeName(s.RemoteAddr().String())
+	}
+	if name == "" {
+		name = "Player"
 	}
 
 	// Class selection (blocking, before joining the world).
@@ -113,7 +161,10 @@ func handleSession(srv *mud.Server, s gossh.Session) {
 	sess.BaseMaxHP = cls.MaxHP
 	sess.RunLog.Class = cls.Name
 
-	srv.AddSession(sess)
+	if !srv.AddSession(sess) {
+		fmt.Fprintln(s, "Server is full. Please try again later.")
+		return
+	}
 	defer srv.RemoveSession(sess)
 
 	srv.RunLoop(sess)

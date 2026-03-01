@@ -31,6 +31,9 @@ const DeathTicks = 4
 // a new enemy wave is spawned (~30 seconds at 500 ms/tick).
 const EnemyRespawnDelay = 60
 
+// MaxSessions is the maximum number of concurrent player connections.
+const MaxSessions = 50
+
 // Server manages all floors and sessions for the MUD.
 type Server struct {
 	mu       sync.Mutex
@@ -72,14 +75,20 @@ func (s *Server) Run() {
 
 // AddSession registers a new session and spawns the player entity on floor 0 (the city).
 // Must be called after the session's Class is set.
+// Returns false if the server is full (MaxSessions reached).
 // The caller must NOT hold s.mu.
-func (s *Server) AddSession(sess *Session) {
+func (s *Server) AddSession(sess *Session) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if len(s.sessions) >= MaxSessions {
+		return false
+	}
 
 	s.sessions = append(s.sessions, sess)
 	s.spawnPlayerLocked(sess, 0)
 	globalMessage(s.sessions, fmt.Sprintf("🌟 %s has arrived in Emberveil!", sess.Name))
+	return true
 }
 
 // RemoveSession deregisters a session and removes the player entity from the world.
@@ -120,9 +129,8 @@ func (s *Server) tick() {
 
 	// 1. Process one pending action per live player.
 	for _, sess := range s.sessions {
-		if sess.DeathCountdown > 0 {
-			sess.DeathCountdown--
-			if sess.DeathCountdown == 0 {
+		if sess.GetDeathCountdown() > 0 {
+			if sess.DecrDeathCountdown() == 0 {
 				s.respawnLocked(sess)
 			}
 			continue
@@ -151,7 +159,7 @@ func (s *Server) tickFloorLocked(floor *Floor) {
 	// Safe zones (e.g. the city) skip combat and AI but still tick player cooldowns.
 	if floor.SafeZone {
 		for _, sess := range s.sessions {
-			if sess.FloorNum != floor.Num || sess.DeathCountdown != 0 {
+			if sess.FloorNum != floor.Num || sess.GetDeathCountdown() != 0 {
 				continue
 			}
 			if sess.SpecialCooldown > 0 {
@@ -169,14 +177,14 @@ func (s *Server) tickFloorLocked(floor *Floor) {
 	// Collect live player IDs on this floor.
 	var playerIDs []ecs.EntityID
 	for _, sess := range s.sessions {
-		if sess.FloorNum == floor.Num && sess.DeathCountdown == 0 && sess.PlayerID != ecs.NilEntity {
+		if sess.FloorNum == floor.Num && sess.GetDeathCountdown() == 0 && sess.PlayerID != ecs.NilEntity {
 			playerIDs = append(playerIDs, sess.PlayerID)
 		}
 	}
 
 	// Apply poison/burn to all players on this floor.
 	for _, sess := range s.sessions {
-		if sess.FloorNum == floor.Num && sess.DeathCountdown == 0 {
+		if sess.FloorNum == floor.Num && sess.GetDeathCountdown() == 0 {
 			s.applyDoTLocked(floor, sess)
 		}
 	}
@@ -186,7 +194,7 @@ func (s *Server) tickFloorLocked(floor *Floor) {
 
 	// Per-player: ability cooldown and passive regen.
 	for _, sess := range s.sessions {
-		if sess.FloorNum != floor.Num || sess.DeathCountdown != 0 {
+		if sess.FloorNum != floor.Num || sess.GetDeathCountdown() != 0 {
 			continue
 		}
 		if sess.SpecialCooldown > 0 {
@@ -239,7 +247,7 @@ func (s *Server) tickFloorLocked(floor *Floor) {
 
 	// Check for player deaths.
 	for _, sess := range s.sessions {
-		if sess.FloorNum != floor.Num || sess.DeathCountdown != 0 {
+		if sess.FloorNum != floor.Num || sess.GetDeathCountdown() != 0 {
 			continue
 		}
 		hp := floor.World.Get(sess.PlayerID, component.CHealth)
@@ -247,7 +255,7 @@ func (s *Server) tickFloorLocked(floor *Floor) {
 			floorMessage(s.sessions, floor.Num, fmt.Sprintf("💀 %s has fallen!", sess.Name))
 			sess.RunLog.Timestamp = time.Now()
 			saveRunLog(sess.RunLog)
-			sess.DeathCountdown = DeathTicks
+			sess.SetDeathCountdown(DeathTicks)
 			// Entity stays in world while countdown runs so others can see the
 			// corpse position; it's cleaned up in respawnLocked.
 		}
@@ -397,7 +405,11 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 				return
 			}
 			name := entityGlyph(floor.World, target)
-			enemyPos := floor.World.Get(target, component.CPosition).(component.Position)
+			posComp := floor.World.Get(target, component.CPosition)
+			if posComp == nil {
+				return
+			}
+			enemyPos := posComp.(component.Position)
 			var lootDrops []component.LootEntry
 			if lc := floor.World.Get(target, component.CLoot); lc != nil {
 				lootDrops = lc.(component.Loot).Drops
@@ -521,11 +533,13 @@ func (s *Server) transitionFloorLocked(sess *Session, targetFloor int) {
 
 	// Restore HP (capped at max).
 	if savedHP > 0 {
-		hp := floor.World.Get(sess.PlayerID, component.CHealth).(component.Health)
-		if savedHP < hp.Max {
-			hp.Current = savedHP
+		if hpComp := floor.World.Get(sess.PlayerID, component.CHealth); hpComp != nil {
+			hp := hpComp.(component.Health)
+			if savedHP < hp.Max {
+				hp.Current = savedHP
+			}
+			floor.World.Add(sess.PlayerID, hp)
 		}
-		floor.World.Add(sess.PlayerID, hp)
 	}
 
 	// Restore inventory.
@@ -649,8 +663,8 @@ func (s *Server) RenderSession(sess *Session) {
 		return
 	}
 
-	if sess.DeathCountdown > 0 {
-		drawDeathScreen(sess, sess.DeathCountdown)
+	if dc := sess.GetDeathCountdown(); dc > 0 {
+		drawDeathScreen(sess, dc)
 		return
 	}
 
@@ -804,7 +818,7 @@ func (s *Server) checkVictoryLocked(floor *Floor, sess *Session) {
 	floorMessage(s.sessions, floor.Num, fmt.Sprintf("🏆 %s has defeated the boss! The Spire's heart is theirs!", sess.Name))
 	sess.RunLog.Timestamp = time.Now()
 	saveRunLog(sess.RunLog)
-	sess.DeathCountdown = DeathTicks // reuse death countdown for victory → respawn
+	sess.SetDeathCountdown(DeathTicks) // reuse death countdown for victory → respawn
 }
 
 // applyDoTLocked applies poison and self-burn damage to one session's player.
@@ -894,10 +908,16 @@ func (s *Server) tryPickupLocked(floor *Floor, sess *Session) {
 func (s *Server) interactNPCLocked(floor *Floor, sess *Session, _ ecs.EntityID, npc component.NPC) {
 	switch npc.Kind {
 	case component.NPCKindHealer:
-		hp := floor.World.Get(sess.PlayerID, component.CHealth).(component.Health)
+		hpComp := floor.World.Get(sess.PlayerID, component.CHealth)
+		if hpComp == nil {
+			return
+		}
+		hp := hpComp.(component.Health)
 		if hp.Current == hp.Max {
-			line := npc.Lines[floor.Rng.Intn(len(npc.Lines))]
-			sess.AddMessage(fmt.Sprintf("💬 %s: \"%s\"", npc.Name, line))
+			if len(npc.Lines) > 0 {
+				line := npc.Lines[floor.Rng.Intn(len(npc.Lines))]
+				sess.AddMessage(fmt.Sprintf("💬 %s: \"%s\"", npc.Name, line))
+			}
 			return
 		}
 		old := hp.Current
@@ -909,12 +929,16 @@ func (s *Server) interactNPCLocked(floor *Floor, sess *Session, _ ecs.EntityID, 
 		sess.PendingNPC = 1 // any non-zero signals RunShop; exact ID not needed
 
 	case component.NPCKindAnimal:
-		line := npc.Lines[floor.Rng.Intn(len(npc.Lines))]
-		sess.AddMessage(line) // no speech marks for animals
+		if len(npc.Lines) > 0 {
+			line := npc.Lines[floor.Rng.Intn(len(npc.Lines))]
+			sess.AddMessage(line) // no speech marks for animals
+		}
 
 	default: // NPCKindDialogue
-		line := npc.Lines[floor.Rng.Intn(len(npc.Lines))]
-		sess.AddMessage(fmt.Sprintf("💬 %s: \"%s\"", npc.Name, line))
+		if len(npc.Lines) > 0 {
+			line := npc.Lines[floor.Rng.Intn(len(npc.Lines))]
+			sess.AddMessage(fmt.Sprintf("💬 %s: \"%s\"", npc.Name, line))
+		}
 	}
 }
 
@@ -1129,10 +1153,12 @@ func (s *Server) applyConsumableLocked(floor *Floor, sess *Session, item compone
 		sess.AddMessage("The Phase Rod envelops you in prismatic shielding. (+6 DEF, 15 turns)")
 	case assets.GlyphApexCore:
 		sess.BaseMaxHP += 3
-		hp := floor.World.Get(sess.PlayerID, component.CHealth).(component.Health)
-		hp.Max += 3
-		hp.Current += 3
-		floor.World.Add(sess.PlayerID, hp)
+		if hpComp := floor.World.Get(sess.PlayerID, component.CHealth); hpComp != nil {
+			hp := hpComp.(component.Health)
+			hp.Max += 3
+			hp.Current += 3
+			floor.World.Add(sess.PlayerID, hp)
+		}
 		sess.AddMessage("The Apex Core integrates into your biology. (+3 MaxHP permanently)")
 	}
 }

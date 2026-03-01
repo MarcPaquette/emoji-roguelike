@@ -6,6 +6,7 @@ import (
 	"emoji-roguelike/internal/gamemap"
 	"emoji-roguelike/internal/render"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -67,9 +68,11 @@ type Session struct {
 	// Render trigger: ticker sends here; session's goroutine drains and renders.
 	RenderCh chan struct{}
 
-	// DeathCountdown > 0 means the player is dead and waiting to respawn.
+	// deathCountdown > 0 means the player is dead and waiting to respawn.
 	// Decremented each tick; when it reaches 0, respawn fires.
-	DeathCountdown int
+	// Accessed atomically: the tick goroutine writes under s.mu, while
+	// the session goroutine reads without s.mu for UI gating.
+	deathCountdown atomic.Int32
 }
 
 // NewSession allocates a Session for a newly-connected player.
@@ -87,6 +90,20 @@ func NewSession(id int, name string, color tcell.Color, screen tcell.Screen) *Se
 		},
 		RenderCh: make(chan struct{}, 1),
 	}
+}
+
+// GetDeathCountdown returns the current death countdown value.
+// Safe to call from any goroutine.
+func (s *Session) GetDeathCountdown() int { return int(s.deathCountdown.Load()) }
+
+// SetDeathCountdown sets the death countdown. Caller should hold s.mu for
+// consistency with other session state, but the field itself is atomic.
+func (s *Session) SetDeathCountdown(v int) { s.deathCountdown.Store(int32(v)) }
+
+// DecrDeathCountdown atomically decrements the death countdown and returns
+// the new value.
+func (s *Session) DecrDeathCountdown() int {
+	return int(s.deathCountdown.Add(-1))
 }
 
 // SetAction stores the player's most recent key action (last key wins).
