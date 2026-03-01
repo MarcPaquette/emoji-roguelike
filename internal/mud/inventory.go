@@ -405,12 +405,7 @@ func drawInvScreen(screen tcell.Screen, inv component.Inventory, panel, cursor i
 	highlight := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(tcell.ColorAqua)
 	dim := tcell.StyleDefault.Foreground(tcell.ColorGray)
 
-	put := func(x, y int, s string, style tcell.Style) {
-		for _, r := range s {
-			screen.SetContent(x, y, r, nil, style)
-			x++
-		}
-	}
+	put := func(x, y int, s string, style tcell.Style) { putText(screen, x, y, s, style) }
 
 	title := fmt.Sprintf("INVENTORY  [Backpack %d/%d]", len(inv.Backpack), inv.Capacity)
 	put(0, 0, title, yellow)

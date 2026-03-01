@@ -131,6 +131,11 @@ func (s *Server) tick() {
 	for _, sess := range s.sessions {
 		if sess.GetDeathCountdown() > 0 {
 			if sess.DecrDeathCountdown() == 0 {
+				if sess.IsVictory() {
+					// Victory: don't auto-respawn; RunLoop will show the
+					// interactive victory screen and handle the player's choice.
+					continue
+				}
 				s.respawnLocked(sess)
 			}
 			continue
@@ -663,6 +668,10 @@ func (s *Server) RenderSession(sess *Session) {
 		return
 	}
 
+	if sess.IsVictory() {
+		drawVictoryScreen(sess)
+		return
+	}
 	if dc := sess.GetDeathCountdown(); dc > 0 {
 		drawDeathScreen(sess, dc)
 		return
@@ -815,10 +824,12 @@ func (s *Server) checkVictoryLocked(floor *Floor, sess *Session) {
 		}
 	}
 	sess.RunLog.Victory = true
+	sess.RunLog.CauseOfDeath = ""
 	floorMessage(s.sessions, floor.Num, fmt.Sprintf("🏆 %s has defeated the boss! The Spire's heart is theirs!", sess.Name))
 	sess.RunLog.Timestamp = time.Now()
 	saveRunLog(sess.RunLog)
-	sess.SetDeathCountdown(DeathTicks) // reuse death countdown for victory → respawn
+	sess.SetVictory()
+	sess.SetDeathCountdown(DeathTicks) // brief countdown before interactive victory screen
 }
 
 // applyDoTLocked applies poison and self-burn damage to one session's player.

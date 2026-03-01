@@ -194,15 +194,109 @@ func drawDeathScreen(sess *Session, ticksLeft int) {
 		if i > 0 {
 			st = dim
 		}
-		for _, r := range msg {
-			if x >= w {
-				break
-			}
-			sess.Screen.SetContent(x, y, r, nil, st)
-			x++
-		}
+		putText(sess.Screen, x, y, msg, st)
 	}
 	sess.Screen.Show()
+}
+
+// drawVictoryScreen renders the victory stats overlay to the session's screen.
+// Called from RenderSession while the victory flag is set. The interactive
+// prompt ([R]/[Q]) is handled by RunVictory in loop.go once the death
+// countdown reaches 0.
+func drawVictoryScreen(sess *Session) {
+	sess.Screen.Clear()
+	sw, _ := sess.Screen.Size()
+
+	gold := tcell.StyleDefault.Foreground(tcell.ColorYellow).Bold(true)
+	white := tcell.StyleDefault.Foreground(tcell.ColorWhite)
+	green := tcell.StyleDefault.Foreground(tcell.ColorGreen)
+	gray := tcell.StyleDefault.Foreground(tcell.ColorGray)
+	dim := tcell.StyleDefault.Foreground(tcell.ColorLightYellow)
+	red := tcell.StyleDefault.Foreground(tcell.ColorRed)
+
+	scr := sess.Screen
+	put := func(x, y int, s string, st tcell.Style) { putText(scr, x, y, s, st) }
+	sep := func(y int) {
+		for x := range sw {
+			scr.SetContent(x, y, '─', nil, gray)
+		}
+	}
+	label := func(y int, l, v string) {
+		put(2, y, l, dim)
+		put(22, y, v, white)
+	}
+
+	log := &sess.RunLog
+
+	// Kill breakdown.
+	totalKills := 0
+	breakdown := ""
+	for gl, cnt := range log.EnemiesKilled {
+		totalKills += cnt
+		breakdown += fmt.Sprintf("%s×%d  ", gl, cnt)
+	}
+	totalItems := 0
+	for _, c := range log.ItemsUsed {
+		totalItems += c
+	}
+	floorName := ""
+	if log.FloorsReached >= 1 && log.FloorsReached <= MaxFloors {
+		floorName = fmt.Sprintf("Floor %d — %s", log.FloorsReached, assets.FloorNames[log.FloorsReached])
+	}
+
+	y := 1
+	sep(y)
+	y += 2
+
+	put(2, y, "THE PRISMATIC HEART IS SILENT", gold)
+	badge := "[VICTORY]"
+	put(sw-len([]rune(badge))-1, y, badge, green)
+	y += 2
+
+	label(y, "Class:", log.Class)
+	y++
+	label(y, "Floor Reached:", floorName)
+	y++
+	label(y, "Turns Played:", fmt.Sprintf("%d", log.TurnsPlayed))
+	y += 2
+
+	label(y, "Enemies Slain:", fmt.Sprintf("%d", totalKills))
+	y++
+	if breakdown != "" {
+		maxRunes := sw - 6
+		runes := []rune(breakdown)
+		if len(runes) > maxRunes {
+			runes = runes[:maxRunes]
+		}
+		put(4, y, string(runes), dim)
+		y++
+	}
+	y++
+
+	label(y, "Items Used:", fmt.Sprintf("%d", totalItems))
+	y++
+	label(y, "Inscriptions Read:", fmt.Sprintf("%d", log.InscriptionsRead))
+	y += 2
+
+	label(y, "Damage Dealt:", fmt.Sprintf("%d", log.DamageDealt))
+	y++
+	label(y, "Damage Taken:", fmt.Sprintf("%d", log.DamageTaken))
+	y++
+	label(y, "Gold Earned:", fmt.Sprintf("%d", log.GoldEarned))
+	y += 2
+
+	put(2, y, "The Unmaker is unmade. The Spire falls silent.", green)
+	y += 2
+
+	sep(y)
+	y += 2
+
+	if sess.GetDeathCountdown() > 0 {
+		put(2, y, fmt.Sprintf("Preparing summary... %d", sess.GetDeathCountdown()), gray)
+	} else {
+		put(2, y, "[R] Restart from Floor 1", green)
+		put(28, y, "[Q] Quit", red)
+	}
 }
 
 // ColorName returns a human-readable name for the color (for display purposes).

@@ -73,6 +73,11 @@ type Session struct {
 	// Accessed atomically: the tick goroutine writes under s.mu, while
 	// the session goroutine reads without s.mu for UI gating.
 	deathCountdown atomic.Int32
+
+	// victory is set when the player defeats the final boss.
+	// When true, the death countdown shows a victory screen instead of death,
+	// and reaching 0 triggers an interactive victory modal instead of auto-respawn.
+	victory atomic.Bool
 }
 
 // NewSession allocates a Session for a newly-connected player.
@@ -105,6 +110,15 @@ func (s *Session) SetDeathCountdown(v int) { s.deathCountdown.Store(int32(v)) }
 func (s *Session) DecrDeathCountdown() int {
 	return int(s.deathCountdown.Add(-1))
 }
+
+// IsVictory returns whether this session has a pending victory.
+func (s *Session) IsVictory() bool { return s.victory.Load() }
+
+// SetVictory marks this session as having achieved victory.
+func (s *Session) SetVictory() { s.victory.Store(true) }
+
+// ClearVictory clears the victory flag.
+func (s *Session) ClearVictory() { s.victory.Store(false) }
 
 // SetAction stores the player's most recent key action (last key wins).
 func (s *Session) SetAction(a Action) {

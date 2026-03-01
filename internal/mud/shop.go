@@ -153,15 +153,7 @@ func drawShopScreen(screen tcell.Screen, items []assets.ShopEntry, cursor, gold 
 	highlight := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(tcell.ColorAqua)
 	dim := tcell.StyleDefault.Foreground(tcell.ColorGray)
 
-	put := func(x, y int, s string, style tcell.Style) {
-		for _, r := range s {
-			if x >= sw {
-				break
-			}
-			screen.SetContent(x, y, r, nil, style)
-			x++
-		}
-	}
+	put := func(x, y int, s string, style tcell.Style) { putText(screen, x, y, s, style) }
 
 	put(0, 0, fmt.Sprintf("🛍️ YEVA'S PROVISIONS  [You have %d💰]", gold), yellow)
 	hints := "[j/k] Move  [a-h] Buy  [Enter] Buy selected  [Esc] Close"

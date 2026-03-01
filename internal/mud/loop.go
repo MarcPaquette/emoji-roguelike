@@ -119,6 +119,25 @@ func (s *Server) RunLoop(sess *Session) {
 			s.RenderSession(sess)
 			s.mu.Unlock()
 			sess.Screen.Show()
+
+			// Interactive victory screen: countdown finished, waiting for input.
+			if sess.IsVictory() && sess.GetDeathCountdown() == 0 {
+				if s.runVictory(sess, eventCh) {
+					// Player chose to restart — respawn to Emberveil.
+					s.mu.Lock()
+					sess.ClearVictory()
+					s.respawnLocked(sess)
+					s.mu.Unlock()
+					select {
+					case sess.RenderCh <- struct{}{}:
+					default:
+					}
+				} else {
+					return // player chose to quit
+				}
+				continue
+			}
+
 			if pendingNPC != 0 && sess.GetDeathCountdown() == 0 {
 				s.RunShop(sess, eventCh)
 				// Trigger re-render after shop closes.
@@ -207,6 +226,37 @@ func runHelp(sess *Session, eventCh <-chan tcell.Event) {
 			sess.Screen.Sync()
 		case *tcell.EventKey:
 			return
+		}
+	}
+}
+
+// runVictory blocks on input until the player presses [R] (restart) or [Q] (quit).
+// Returns true for restart, false for quit/disconnect.
+func (s *Server) runVictory(sess *Session, eventCh <-chan tcell.Event) bool {
+	for {
+		// Render the victory screen (which includes [R]/[Q] prompt since countdown == 0).
+		s.mu.Lock()
+		drawVictoryScreen(sess)
+		s.mu.Unlock()
+		sess.Screen.Show()
+
+		ev, ok := <-eventCh
+		if !ok {
+			return false // disconnected
+		}
+		switch ev := ev.(type) {
+		case *tcell.EventResize:
+			sess.Screen.Sync()
+		case *tcell.EventKey:
+			switch ev.Rune() {
+			case 'r', 'R':
+				return true
+			case 'q', 'Q':
+				return false
+			}
+			if ev.Key() == tcell.KeyEscape {
+				return false
+			}
 		}
 	}
 }
