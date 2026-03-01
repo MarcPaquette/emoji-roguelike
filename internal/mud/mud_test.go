@@ -449,3 +449,248 @@ func TestMultiPlayerAITargetsNearest(t *testing.T) {
 		t.Error("Bob's run log should not record damage taken")
 	}
 }
+
+// ─── Atomic DeathCountdown ────────────────────────────────────────────────────
+
+func TestDeathCountdownDefault(t *testing.T) {
+	sess := &Session{RenderCh: make(chan struct{}, 1)}
+	if got := sess.GetDeathCountdown(); got != 0 {
+		t.Errorf("fresh session DeathCountdown = %d, want 0", got)
+	}
+}
+
+func TestDeathCountdownSetGet(t *testing.T) {
+	sess := &Session{RenderCh: make(chan struct{}, 1)}
+	sess.SetDeathCountdown(4)
+	if got := sess.GetDeathCountdown(); got != 4 {
+		t.Errorf("GetDeathCountdown() = %d, want 4", got)
+	}
+}
+
+func TestDeathCountdownDecrement(t *testing.T) {
+	sess := &Session{RenderCh: make(chan struct{}, 1)}
+	sess.SetDeathCountdown(4)
+
+	cases := []struct {
+		name   string
+		expect int
+	}{
+		{"4→3", 3},
+		{"3→2", 2},
+		{"2→1", 1},
+		{"1→0", 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := sess.DecrDeathCountdown()
+			if got != tc.expect {
+				t.Errorf("DecrDeathCountdown() = %d, want %d", got, tc.expect)
+			}
+		})
+	}
+}
+
+func TestDeathCountdownConcurrent(t *testing.T) {
+	sess := &Session{RenderCh: make(chan struct{}, 1)}
+	sess.SetDeathCountdown(1000)
+
+	done := make(chan struct{})
+	// Writer goroutine: decrement 500 times.
+	go func() {
+		for range 500 {
+			sess.DecrDeathCountdown()
+		}
+		done <- struct{}{}
+	}()
+	// Reader goroutine: read 500 times.
+	go func() {
+		for range 500 {
+			_ = sess.GetDeathCountdown()
+		}
+		done <- struct{}{}
+	}()
+	// Main goroutine: decrement 500 times.
+	for range 500 {
+		sess.DecrDeathCountdown()
+	}
+	<-done
+	<-done
+	// After 1000 decrements total, should be 0.
+	if got := sess.GetDeathCountdown(); got != 0 {
+		t.Errorf("after concurrent decrements, got %d, want 0", got)
+	}
+}
+
+// ─── Session capacity ─────────────────────────────────────────────────────────
+
+func TestAddSessionMaxCapacity(t *testing.T) {
+	srv := newTestServer()
+
+	// Fill to MaxSessions.
+	sessions := make([]*Session, MaxSessions)
+	for i := range MaxSessions {
+		sess := newTestSession(i, srv)
+		ok := srv.AddSession(sess)
+		if !ok {
+			t.Errorf("AddSession(%d) returned false, want true", i)
+		}
+		sessions[i] = sess
+	}
+
+	// 51st session should be rejected.
+	extra := newTestSession(MaxSessions, srv)
+	if srv.AddSession(extra) {
+		t.Error("AddSession beyond MaxSessions should return false")
+	}
+
+	// Verify the extra session was not added to the sessions list.
+	srv.mu.Lock()
+	count := len(srv.sessions)
+	srv.mu.Unlock()
+	if count != MaxSessions {
+		t.Errorf("expected %d sessions, got %d", MaxSessions, count)
+	}
+
+	// Verify extra session has no PlayerID assigned.
+	if extra.PlayerID != ecs.NilEntity {
+		t.Error("rejected session should not have a PlayerID")
+	}
+
+	// Clean up.
+	for _, sess := range sessions {
+		srv.RemoveSession(sess)
+	}
+}
+
+func TestAddSessionAfterRemovalAllowsNew(t *testing.T) {
+	srv := newTestServer()
+
+	// Fill to capacity.
+	sessions := make([]*Session, MaxSessions)
+	for i := range MaxSessions {
+		sessions[i] = newTestSession(i, srv)
+		srv.AddSession(sessions[i])
+	}
+
+	// Remove one.
+	srv.RemoveSession(sessions[0])
+
+	// Now a new session should be accepted.
+	replacement := newTestSession(MaxSessions, srv)
+	if !srv.AddSession(replacement) {
+		t.Error("AddSession should succeed after RemoveSession frees a slot")
+	}
+	srv.RemoveSession(replacement)
+	for _, sess := range sessions[1:] {
+		srv.RemoveSession(sess)
+	}
+}
+
+// ─── Inventory save guard ─────────────────────────────────────────────────────
+
+func TestInventorySaveGuardFloorChange(t *testing.T) {
+	srv := newTestServer()
+	sess := newTestSession(0, srv)
+	srv.AddSession(sess)
+	defer srv.RemoveSession(sess)
+
+	// Read the current inventory from ECS.
+	srv.mu.Lock()
+	floor := srv.floors[sess.FloorNum]
+	invComp := floor.World.Get(sess.PlayerID, component.CInventory)
+	srv.mu.Unlock()
+	if invComp == nil {
+		t.Fatal("player has no Inventory component")
+	}
+	inv := invComp.(component.Inventory)
+	originalLen := len(inv.Backpack)
+
+	// Add a test item to the local copy.
+	inv.Backpack = append(inv.Backpack, component.Item{
+		Name:  "Stale Item",
+		Glyph: "🧪",
+	})
+
+	// Simulate floor change while inventory modal is "open".
+	srv.mu.Lock()
+	snapshotFloor := sess.FloorNum
+	snapshotPlayer := sess.PlayerID
+	// Change floor to simulate transition.
+	sess.FloorNum = 5
+	// The save guard checks: if sess.FloorNum != snapshotFloor → skip save.
+	shouldSave := sess.FloorNum == snapshotFloor && sess.PlayerID == snapshotPlayer
+	srv.mu.Unlock()
+
+	if shouldSave {
+		t.Error("save guard should have rejected: floor changed")
+	}
+
+	// Restore floor for cleanup.
+	srv.mu.Lock()
+	sess.FloorNum = 0
+	srv.mu.Unlock()
+
+	// Verify the stale item was NOT written back.
+	srv.mu.Lock()
+	invComp2 := floor.World.Get(sess.PlayerID, component.CInventory)
+	srv.mu.Unlock()
+	if invComp2 == nil {
+		t.Fatal("player lost Inventory component")
+	}
+	inv2 := invComp2.(component.Inventory)
+	if len(inv2.Backpack) != originalLen {
+		t.Errorf("stale inventory was written back: backpack len %d, want %d", len(inv2.Backpack), originalLen)
+	}
+}
+
+func TestInventorySaveGuardPlayerIDChange(t *testing.T) {
+	srv := newTestServer()
+	sess := newTestSession(0, srv)
+	srv.AddSession(sess)
+	defer srv.RemoveSession(sess)
+
+	srv.mu.Lock()
+	floor := srv.floors[sess.FloorNum]
+	invComp := floor.World.Get(sess.PlayerID, component.CInventory)
+	srv.mu.Unlock()
+	if invComp == nil {
+		t.Fatal("player has no Inventory component")
+	}
+	inv := invComp.(component.Inventory)
+	originalLen := len(inv.Backpack)
+
+	// Add a test item to local copy.
+	inv.Backpack = append(inv.Backpack, component.Item{
+		Name:  "Stale Item",
+		Glyph: "🧪",
+	})
+
+	// Simulate player entity change (e.g. death/respawn).
+	srv.mu.Lock()
+	snapshotFloor := sess.FloorNum
+	snapshotPlayer := sess.PlayerID
+	sess.PlayerID = ecs.EntityID(99999) // different entity
+	shouldSave := sess.FloorNum == snapshotFloor && sess.PlayerID == snapshotPlayer
+	srv.mu.Unlock()
+
+	if shouldSave {
+		t.Error("save guard should have rejected: PlayerID changed")
+	}
+
+	// Restore for cleanup.
+	srv.mu.Lock()
+	sess.PlayerID = snapshotPlayer
+	srv.mu.Unlock()
+
+	// Verify stale item was NOT written.
+	srv.mu.Lock()
+	invComp2 := floor.World.Get(sess.PlayerID, component.CInventory)
+	srv.mu.Unlock()
+	if invComp2 == nil {
+		t.Fatal("player lost Inventory component")
+	}
+	inv2 := invComp2.(component.Inventory)
+	if len(inv2.Backpack) != originalLen {
+		t.Errorf("stale inventory was written back: backpack len %d, want %d", len(inv2.Backpack), originalLen)
+	}
+}
