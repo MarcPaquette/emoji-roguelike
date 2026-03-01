@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	mathrand "math/rand"
 	"os"
 	"strings"
@@ -78,9 +79,11 @@ func main() {
 	keyFile := flag.String("key", "server_host_key", "Path to the PEM-encoded host key (auto-generated if absent)")
 	flag.Parse()
 
-	signer := loadOrCreateHostKey(*keyFile)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	signer := loadOrCreateHostKey(*keyFile, logger)
 	rng := mathrand.New(mathrand.NewSource(time.Now().UnixNano()))
-	srv := mud.NewServer(rng)
+	srv := mud.NewServer(rng, logger)
 
 	// Start the world ticker in a background goroutine.
 	go srv.Run()
@@ -90,14 +93,14 @@ func main() {
 		IdleTimeout: 10 * time.Minute,
 		MaxTimeout:  4 * time.Hour,
 		Handler: func(s gossh.Session) {
-			handleSession(srv, s)
+			handleSession(srv, s, logger)
 		},
 		PtyCallback: func(_ gossh.Context, _ gossh.Pty) bool { return true },
 		HostSigners: []gossh.Signer{signer},
 	}
 
-	log.Printf("emoji-roguelike MUD server listening on :%d", *port)
-	log.Printf("Connect with:  ssh -p %d -o StrictHostKeyChecking=no localhost", *port)
+	logger.Info("server started", "port", *port)
+	logger.Info("connect with", "command", fmt.Sprintf("ssh -p %d -o StrictHostKeyChecking=no localhost", *port))
 	log.Fatal(sshSrv.ListenAndServe())
 }
 
@@ -106,9 +109,13 @@ func main() {
 var termMu sync.Mutex
 
 // handleSession is the gliderlabs SSH handler for one connection.
-func handleSession(srv *mud.Server, s gossh.Session) {
+func handleSession(srv *mud.Server, s gossh.Session, logger *slog.Logger) {
+	remoteAddr := s.RemoteAddr().String()
+	logger.Info("connection attempt", "remote", remoteAddr, "user", s.User())
+
 	pty, winCh, hasPTY := s.Pty()
 	if !hasPTY {
+		logger.Warn("rejected: no PTY", "remote", remoteAddr)
 		fmt.Fprintln(s, "This game requires a PTY. Connect with: ssh -t -p 2222 <host>")
 		return
 	}
@@ -130,10 +137,12 @@ func handleSession(srv *mud.Server, s gossh.Session) {
 	screen, err := tcell.NewTerminfoScreenFromTty(tty)
 	termMu.Unlock()
 	if err != nil {
+		logger.Error("terminal setup failed", "remote", remoteAddr, "error", err)
 		fmt.Fprintf(s, "Terminal setup failed: %v\n", err)
 		return
 	}
 	if err := screen.Init(); err != nil {
+		logger.Error("screen init failed", "remote", remoteAddr, "error", err)
 		fmt.Fprintf(s, "Screen init failed: %v\n", err)
 		return
 	}
@@ -151,6 +160,7 @@ func handleSession(srv *mud.Server, s gossh.Session) {
 	// Class selection (blocking, before joining the world).
 	cls, ok := mud.ClassSelect(screen)
 	if !ok {
+		logger.Info("disconnected during class select", "remote", remoteAddr, "player", name)
 		return
 	}
 
@@ -172,15 +182,15 @@ func handleSession(srv *mud.Server, s gossh.Session) {
 
 // ─── host key ────────────────────────────────────────────────────────────────
 
-func loadOrCreateHostKey(path string) gossh.Signer {
+func loadOrCreateHostKey(path string, logger *slog.Logger) gossh.Signer {
 	if data, err := os.ReadFile(path); err == nil {
 		if signer, err := xssh.ParsePrivateKey(data); err == nil {
-			log.Printf("Loaded host key from %s", path)
+			logger.Info("loaded host key", "path", path)
 			return signer
 		}
 	}
 
-	log.Printf("Generating new ed25519 host key → %s", path)
+	logger.Info("generating new host key", "path", path)
 	_, key, err := ed25519.GenerateKey(cryptorand.Reader)
 	if err != nil {
 		log.Fatalf("generate host key: %v", err)

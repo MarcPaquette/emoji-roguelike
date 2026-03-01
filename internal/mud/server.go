@@ -14,6 +14,7 @@ import (
 	"emoji-roguelike/internal/render"
 	"emoji-roguelike/internal/system"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"sync"
 	"time"
@@ -41,6 +42,7 @@ type Server struct {
 	sessions []*Session
 	nextID   int
 	rng      *rand.Rand
+	Log      *slog.Logger
 }
 
 // NextSessionID returns a unique session ID and an assigned player color.
@@ -55,10 +57,11 @@ func (s *Server) NextSessionID() (int, tcell.Color) {
 }
 
 // NewServer creates a Server and pre-generates floor 0 (the city of Emberveil).
-func NewServer(rng *rand.Rand) *Server {
+func NewServer(rng *rand.Rand, log *slog.Logger) *Server {
 	s := &Server{
 		floors: make(map[int]*Floor),
 		rng:    rng,
+		Log:    log,
 	}
 	s.floors[0] = newCityFloor(rand.New(rand.NewSource(rng.Int63())))
 	return s
@@ -82,12 +85,14 @@ func (s *Server) AddSession(sess *Session) bool {
 	defer s.mu.Unlock()
 
 	if len(s.sessions) >= MaxSessions {
+		s.Log.Warn("server full, rejecting player", "player", sess.Name, "max", MaxSessions)
 		return false
 	}
 
 	s.sessions = append(s.sessions, sess)
 	s.spawnPlayerLocked(sess, 0)
 	globalMessage(s.sessions, fmt.Sprintf("🌟 %s has arrived in Emberveil!", sess.Name))
+	s.Log.Info("player joined", "player", sess.Name, "class", sess.Class.Name, "sessions", len(s.sessions))
 	return true
 }
 
@@ -109,6 +114,7 @@ func (s *Server) RemoveSession(sess *Session) {
 		}
 	}
 	globalMessage(s.sessions, fmt.Sprintf("👋 %s has left the dungeon.", sess.Name))
+	s.Log.Info("player left", "player", sess.Name, "sessions", len(s.sessions))
 }
 
 // SignalRender sends a non-blocking render signal to all sessions.
@@ -264,7 +270,8 @@ func (s *Server) tickFloorLocked(floor *Floor) {
 		if hp == nil || hp.(component.Health).Current <= 0 {
 			floorMessage(s.sessions, floor.Num, fmt.Sprintf("💀 %s has fallen!", sess.Name))
 			sess.RunLog.Timestamp = time.Now()
-			saveRunLog(sess.RunLog)
+			saveRunLog(sess.RunLog, s.Log)
+			s.Log.Info("player died", "player", sess.Name, "floor", floor.Num, "cause", sess.RunLog.CauseOfDeath, "turns", sess.RunLog.TurnsPlayed)
 			sess.SetDeathCountdown(DeathTicks)
 			// Entity stays in world while countdown runs so others can see the
 			// corpse position; it's cleaned up in respawnLocked.
@@ -512,6 +519,7 @@ func (s *Server) transitionFloorLocked(sess *Session, targetFloor int) {
 	if targetFloor > sess.RunLog.FloorsReached {
 		sess.RunLog.FloorsReached = targetFloor
 	}
+	s.Log.Info("floor transition", "player", sess.Name, "from", fromFloor, "to", targetFloor)
 	var spawnX, spawnY int
 	if targetFloor > fromFloor {
 		sx, sy := floor.StairsUpX, floor.StairsUpY
@@ -661,6 +669,7 @@ func (s *Server) respawnLocked(sess *Session) {
 
 	sess.AddMessage("You respawn in Emberveil...")
 	s.spawnPlayerLocked(sess, 0)
+	s.Log.Info("player respawned", "player", sess.Name)
 }
 
 // ─── Per-session rendering ────────────────────────────────────────────────────
@@ -835,7 +844,8 @@ func (s *Server) checkVictoryLocked(floor *Floor, sess *Session) {
 	sess.RunLog.CauseOfDeath = ""
 	floorMessage(s.sessions, floor.Num, fmt.Sprintf("🏆 %s has defeated the boss! The Spire's heart is theirs!", sess.Name))
 	sess.RunLog.Timestamp = time.Now()
-	saveRunLog(sess.RunLog)
+	saveRunLog(sess.RunLog, s.Log)
+	s.Log.Info("player victory", "player", sess.Name, "class", sess.Class.Name, "turns", sess.RunLog.TurnsPlayed)
 	sess.SetVictory()
 	sess.SetDeathCountdown(DeathTicks) // brief countdown before interactive victory screen
 }

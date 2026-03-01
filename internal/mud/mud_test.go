@@ -5,6 +5,7 @@ import (
 	"emoji-roguelike/internal/component"
 	"emoji-roguelike/internal/ecs"
 	"emoji-roguelike/internal/gamemap"
+	"log/slog"
 	"math/rand"
 	"testing"
 
@@ -22,7 +23,7 @@ func newSimScreen() tcell.Screen {
 
 func newTestServer() *Server {
 	rng := rand.New(rand.NewSource(42))
-	return NewServer(rng)
+	return NewServer(rng, slog.Default())
 }
 
 func newTestSession(id int, _ *Server) *Session {

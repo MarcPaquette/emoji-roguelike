@@ -2,6 +2,7 @@ package mud
 
 import (
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -24,25 +25,29 @@ type RunLog struct {
 }
 
 // saveRunLog appends the completed run as a single JSON line to runs.jsonl.
-// Errors are silently discarded so a disk problem never crashes the server.
-func saveRunLog(log RunLog) {
+// Errors are logged but never crash the server.
+func saveRunLog(rl RunLog, logger *slog.Logger) {
 	dir, err := runLogDir()
 	if err != nil {
+		logger.Warn("run log: cannot determine data dir", "error", err)
 		return
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
+		logger.Warn("run log: cannot create data dir", "error", err)
 		return
 	}
 	f, err := os.OpenFile(filepath.Join(dir, "runs.jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
+		logger.Warn("run log: cannot open file", "error", err)
 		return
 	}
 	defer f.Close()
-	data, err := json.Marshal(log)
+	data, err := json.Marshal(rl)
 	if err != nil {
+		logger.Warn("run log: cannot marshal JSON", "error", err)
 		return
 	}
-	f.Write(data)      //nolint:errcheck
+	f.Write(data)         //nolint:errcheck
 	f.Write([]byte("\n")) //nolint:errcheck
 }
 

@@ -51,6 +51,7 @@ func ClassSelect(screen tcell.Screen) (assets.ClassDef, bool) {
 // RunLoop is the per-session goroutine. It reads input, triggers renders, and
 // handles modal screens (inventory, help). Blocks until the player disconnects.
 func (s *Server) RunLoop(sess *Session) {
+	s.Log.Info("session started", "player", sess.Name, "class", sess.Class.Name)
 	// Start an async input reader goroutine.
 	eventCh := make(chan tcell.Event, 32)
 	go func() {
@@ -63,6 +64,8 @@ func (s *Server) RunLoop(sess *Session) {
 			eventCh <- ev
 		}
 	}()
+
+	defer s.Log.Info("session ended", "player", sess.Name)
 
 	// Show help screen on first join so new players learn the controls.
 	runHelp(sess, eventCh)
