@@ -21,6 +21,7 @@ import (
 	"log"
 	"log/slog"
 	mathrand "math/rand"
+	"net"
 	"os"
 	"strings"
 	"sync"
@@ -29,6 +30,7 @@ import (
 
 	"emoji-roguelike/internal/mud"
 	internalssh "emoji-roguelike/internal/ssh"
+	"emoji-roguelike/internal/telnet"
 
 	"github.com/gdamore/tcell/v2"
 	gossh "github.com/gliderlabs/ssh"
@@ -76,6 +78,7 @@ func sanitizeName(name string) string {
 
 func main() {
 	port := flag.Int("port", 2222, "SSH server port")
+	telnetPort := flag.Int("telnet-port", 2323, "Telnet server port (0 to disable)")
 	keyFile := flag.String("key", "server_host_key", "Path to the PEM-encoded host key (auto-generated if absent)")
 	flag.Parse()
 
@@ -99,7 +102,27 @@ func main() {
 		HostSigners: []gossh.Signer{signer},
 	}
 
-	logger.Info("server started", "port", *port)
+	// Start telnet listener if enabled.
+	if *telnetPort > 0 {
+		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", *telnetPort))
+		if err != nil {
+			log.Fatalf("telnet listen: %v", err)
+		}
+		logger.Info("telnet server started", "port", *telnetPort)
+		logger.Info("connect with", "command", fmt.Sprintf("telnet localhost %d", *telnetPort))
+		go func() {
+			for {
+				conn, err := ln.Accept()
+				if err != nil {
+					logger.Error("telnet accept", "error", err)
+					return
+				}
+				go telnet.HandleConnection(conn, srv, logger, &termMu)
+			}
+		}()
+	}
+
+	logger.Info("SSH server started", "port", *port)
 	logger.Info("connect with", "command", fmt.Sprintf("ssh -p %d -o StrictHostKeyChecking=no localhost", *port))
 	log.Fatal(sshSrv.ListenAndServe())
 }
