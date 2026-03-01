@@ -15,6 +15,7 @@ import (
 	"emoji-roguelike/internal/system"
 	"fmt"
 	"log/slog"
+	"strings"
 	"math/rand"
 	"sync"
 	"time"
@@ -412,8 +413,9 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 			}
 
 		case system.MoveAttack:
-			// Don't attack other players.
+			// Inspect other players on bump (no attack).
 			if s.isPlayerEntity(target) {
+				s.inspectPlayerLocked(floor, sess, target)
 				return
 			}
 			// No combat in safe zones.
@@ -967,6 +969,36 @@ func (s *Server) interactNPCLocked(floor *Floor, sess *Session, _ ecs.EntityID, 
 		if len(npc.Lines) > 0 {
 			line := npc.Lines[floor.Rng.Intn(len(npc.Lines))]
 			sess.AddMessage(fmt.Sprintf("💬 %s: \"%s\"", npc.Name, line))
+		}
+	}
+}
+
+// inspectPlayerLocked shows the bumped player's name, class, HP, and equipment.
+func (s *Server) inspectPlayerLocked(floor *Floor, sess *Session, targetID ecs.EntityID) {
+	target := s.sessionByPlayerID(targetID)
+	if target == nil {
+		return
+	}
+
+	// HP line.
+	hpStr := ""
+	if hc := floor.World.Get(targetID, component.CHealth); hc != nil {
+		hp := hc.(component.Health)
+		hpStr = fmt.Sprintf(" (%d/%d ❤️)", hp.Current, hp.Max)
+	}
+	sess.AddMessage(fmt.Sprintf("👤 %s — %s%s", target.Name, target.Class.Name, hpStr))
+
+	// Equipment line.
+	if ic := floor.World.Get(targetID, component.CInventory); ic != nil {
+		inv := ic.(component.Inventory)
+		var equip []string
+		for _, item := range []component.Item{inv.Head, inv.Body, inv.Feet, inv.MainHand, inv.OffHand} {
+			if !item.IsEmpty() {
+				equip = append(equip, item.Glyph+item.Name)
+			}
+		}
+		if len(equip) > 0 {
+			sess.AddMessage(fmt.Sprintf("  Gear: %s", strings.Join(equip, ", ")))
 		}
 	}
 }

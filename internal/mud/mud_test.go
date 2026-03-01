@@ -7,6 +7,7 @@ import (
 	"emoji-roguelike/internal/gamemap"
 	"log/slog"
 	"math/rand"
+	"strings"
 	"testing"
 
 	"github.com/gdamore/tcell/v2"
@@ -693,5 +694,127 @@ func TestInventorySaveGuardPlayerIDChange(t *testing.T) {
 	inv2 := invComp2.(component.Inventory)
 	if len(inv2.Backpack) != originalLen {
 		t.Errorf("stale inventory was written back: backpack len %d, want %d", len(inv2.Backpack), originalLen)
+	}
+}
+
+// ─── Player bump inspection ──────────────────────────────────────────────────
+
+func TestInspectPlayerShowsNameClassHP(t *testing.T) {
+	srv := newTestServer()
+	sess0 := newTestSession(0, srv)
+	sess1 := newTestSession(1, srv)
+	sess1.Name = "Gandalf"
+	srv.AddSession(sess0)
+	srv.AddSession(sess1)
+	defer srv.RemoveSession(sess0)
+	defer srv.RemoveSession(sess1)
+
+	// Move both to floor 1 so they share a dungeon.
+	srv.mu.Lock()
+	srv.transitionFloorLocked(sess0, 1)
+	srv.transitionFloorLocked(sess1, 1)
+
+	// Place them adjacent.
+	floor := srv.floors[sess0.FloorNum]
+	floor.World.Add(sess0.PlayerID, component.Position{X: 5, Y: 5})
+	floor.World.Add(sess1.PlayerID, component.Position{X: 6, Y: 5})
+
+	// Clear any transition messages.
+	sess0.Messages = nil
+	sess1.Messages = nil
+
+	// Bump sess0 into sess1.
+	srv.inspectPlayerLocked(floor, sess0, sess1.PlayerID)
+	srv.mu.Unlock()
+
+	// Bumper should see the target's info.
+	if len(sess0.Messages) == 0 {
+		t.Fatal("expected inspect message for bumper, got none")
+	}
+	msg := sess0.Messages[0]
+	if !strings.Contains(msg, "Gandalf") {
+		t.Errorf("expected message to contain player name 'Gandalf', got: %s", msg)
+	}
+	if !strings.Contains(msg, sess1.Class.Name) {
+		t.Errorf("expected message to contain class name %q, got: %s", sess1.Class.Name, msg)
+	}
+	if !strings.Contains(msg, "❤️") {
+		t.Errorf("expected message to contain HP heart, got: %s", msg)
+	}
+
+	// Bumped player should have no messages.
+	if len(sess1.Messages) != 0 {
+		t.Errorf("bumped player should have no messages, got %d", len(sess1.Messages))
+	}
+}
+
+func TestInspectPlayerShowsEquipment(t *testing.T) {
+	srv := newTestServer()
+	sess0 := newTestSession(0, srv)
+	sess1 := newTestSession(1, srv)
+	srv.AddSession(sess0)
+	srv.AddSession(sess1)
+	defer srv.RemoveSession(sess0)
+	defer srv.RemoveSession(sess1)
+
+	srv.mu.Lock()
+	srv.transitionFloorLocked(sess0, 1)
+	srv.transitionFloorLocked(sess1, 1)
+
+	floor := srv.floors[sess0.FloorNum]
+	floor.World.Add(sess0.PlayerID, component.Position{X: 5, Y: 5})
+	floor.World.Add(sess1.PlayerID, component.Position{X: 6, Y: 5})
+
+	// Equip an item on the target player.
+	invComp3 := floor.World.Get(sess1.PlayerID, component.CInventory)
+	if invComp3 == nil {
+		t.Fatal("target player missing Inventory component")
+	}
+	inv3 := invComp3.(component.Inventory)
+	inv3.MainHand = component.Item{Name: "Fire Sword", Glyph: "🗡️", Slot: component.SlotOneHand, BonusATK: 3}
+	floor.World.Add(sess1.PlayerID, inv3)
+
+	sess0.Messages = nil
+
+	srv.inspectPlayerLocked(floor, sess0, sess1.PlayerID)
+	srv.mu.Unlock()
+
+	// Should have two messages: header + gear line.
+	if len(sess0.Messages) < 2 {
+		t.Fatalf("expected at least 2 messages, got %d: %v", len(sess0.Messages), sess0.Messages)
+	}
+	gearMsg := sess0.Messages[1]
+	if !strings.Contains(gearMsg, "Fire Sword") {
+		t.Errorf("expected gear line to contain 'Fire Sword', got: %s", gearMsg)
+	}
+	if !strings.Contains(gearMsg, "🗡️") {
+		t.Errorf("expected gear line to contain sword glyph, got: %s", gearMsg)
+	}
+}
+
+func TestInspectPlayerNoEquipmentNoGearLine(t *testing.T) {
+	srv := newTestServer()
+	sess0 := newTestSession(0, srv)
+	sess1 := newTestSession(1, srv)
+	srv.AddSession(sess0)
+	srv.AddSession(sess1)
+	defer srv.RemoveSession(sess0)
+	defer srv.RemoveSession(sess1)
+
+	srv.mu.Lock()
+	srv.transitionFloorLocked(sess0, 1)
+	srv.transitionFloorLocked(sess1, 1)
+
+	floor := srv.floors[sess0.FloorNum]
+	floor.World.Add(sess0.PlayerID, component.Position{X: 5, Y: 5})
+	floor.World.Add(sess1.PlayerID, component.Position{X: 6, Y: 5})
+	sess0.Messages = nil
+
+	srv.inspectPlayerLocked(floor, sess0, sess1.PlayerID)
+	srv.mu.Unlock()
+
+	// Only the header line, no gear line.
+	if len(sess0.Messages) != 1 {
+		t.Errorf("expected exactly 1 message (no gear), got %d: %v", len(sess0.Messages), sess0.Messages)
 	}
 }
