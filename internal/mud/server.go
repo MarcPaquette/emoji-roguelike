@@ -44,6 +44,7 @@ type Server struct {
 	nextID   int
 	rng      *rand.Rand
 	Log      *slog.Logger
+	GameTick int // monotonically increasing tick counter
 }
 
 // NextSessionID returns a unique session ID and an assigned player color.
@@ -133,6 +134,7 @@ func (s *Server) signalRender() {
 
 func (s *Server) tick() {
 	s.mu.Lock()
+	s.GameTick++
 
 	// 1. Process one pending action per live player.
 	for _, sess := range s.sessions {
@@ -188,6 +190,7 @@ func (s *Server) tickFloorLocked(floor *Floor) {
 			}
 			sess.RunLog.TurnsPlayed++
 		}
+		system.ProcessNPCMovement(floor.World, floor.GMap, s.GameTick%component.DayCycleTicks, floor.Rng)
 		return
 	}
 

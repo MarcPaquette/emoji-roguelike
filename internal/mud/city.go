@@ -174,7 +174,42 @@ func newCityFloor(rng *rand.Rand) *Floor {
 
 	// ── Place NPCs ───────────────────────────────────────────────────────
 	placeNPC := func(def assets.NPCDef, x, y int) {
-		factory.NewNPC(w, def.Name, def.Glyph, component.NPCKind(def.Kind), def.Lines, x, y)
+		id := factory.NewNPC(w, def.Name, def.Glyph, component.NPCKind(def.Kind), def.Lines, x, y)
+		// Attach movement schedule if one is defined.
+		if sched, ok := assets.CityNPCSchedules[def.Name]; ok {
+			mc := component.NPCMovement{
+				MoveInterval: sched.MoveInterval,
+			}
+			for _, e := range sched.Entries {
+				se := component.ScheduleEntry{
+					StartTick: e.StartTick,
+					Behavior:  component.MoveBehavior(e.Behavior),
+					BoundsX1:  e.BoundsX1, BoundsY1: e.BoundsY1,
+					BoundsX2:  e.BoundsX2, BoundsY2: e.BoundsY2,
+					StandX:    e.StandX, StandY: e.StandY,
+				}
+				for _, wp := range e.Waypoints {
+					se.Waypoints = append(se.Waypoints, component.Waypoint{X: wp[0], Y: wp[1]})
+				}
+				// For pigeon/animal stationary entries with sentinel (-1,-1),
+				// use the NPC's spawn position.
+				if se.Behavior == component.MoveStationary && se.StandX < 0 {
+					se.StandX = x
+					se.StandY = y
+				}
+				mc.Schedule = append(mc.Schedule, se)
+			}
+			// Initialize to the correct schedule entry at tick 0.
+			mc.ActiveIndex = 0
+			mc.Behavior = mc.Schedule[0].Behavior
+			if mc.Behavior == component.MoveWander {
+				mc.BoundsX1 = mc.Schedule[0].BoundsX1
+				mc.BoundsY1 = mc.Schedule[0].BoundsY1
+				mc.BoundsX2 = mc.Schedule[0].BoundsX2
+				mc.BoundsY2 = mc.Schedule[0].BoundsY2
+			}
+			w.Add(id, mc)
+		}
 	}
 
 	// Named NPCs — repositioned to match new layout
