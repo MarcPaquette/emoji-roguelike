@@ -29,6 +29,7 @@ go build ./...        # compile single-player and server binaries
 |-----|--------|
 | `↑ ↓ ← →` or `k j h l` | Move north/south/west/east |
 | `y u b n` | Move diagonally (NW NE SW SE) |
+| `z` | Use class ability |
 | `,` | Pick up item |
 | `i` | Open inventory |
 | `>` | Descend stairs |
@@ -42,18 +43,20 @@ Inside the **inventory screen**, press the item's number key to use or equip it.
 
 Choose one at the start of each run:
 
-| Emoji | Class | HP | ATK | DEF | Passive |
-|-------|-------|----|-----|-----|---------|
-| 🧙 | Wandering Arcanist | 30 | 5 | 2 | — |
-| 💀 | Void Revenant | 15 | 12 | 0 | Each kill restores 3 HP |
-| 🦾 | Chrono Construct | 60 | 3 | 8 | — (the stats are the passive) |
-| 🌀 | Entropy Dancer | 22 | 9 | 1 | Invisible to enemies for 8 turns |
-| 🔮 | Crystal Oracle | 20 | 3 | 2 | Entire floor revealed from the start |
-| 🧬 | Void Symbiont | 42 | 6 | 5 | Starts with Hyperflask, Prism Shard, and Null Cloak |
+| Emoji | Class | HP | ATK | DEF | Passive | Ability (`z`) |
+|-------|-------|----|-----|-----|---------|---------------|
+| 🧙 | Wandering Arcanist | 30 | 5 | 2 | Wild Magic: 30% chance per kill to restore 2 HP | Dimensional Rift — teleport to a random tile (12t) |
+| 💀 | Void Revenant | 15 | 12 | 0 | Each kill restores 3 HP | Death's Bargain — spend 5 HP for +6 ATK 8 turns (15t) |
+| 🦾 | Chrono Construct | 60 | 3 | 8 | Self-Repair: +1 HP every 8 turns | Overclock — +6 ATK 6 turns, 2 HP/turn burn (18t) |
+| 🌀 | Entropy Dancer | 22 | 9 | 1 | — | Vanish — invisible 8 turns (20t, free per floor) |
+| 🔮 | Crystal Oracle | 20 | 3 | 2 | — | Farsight — reveal entire floor (20t, free per floor) |
+| 🧬 | Void Symbiont | 42 | 6 | 5 | Symbiotic Regen: +1 HP every 5 turns | Parasite Surge — +10 HP, +4 ATK 6 turns (12t, free per floor) |
+
+Cooldowns shown as `(Nt)`. "Free per floor" means the cooldown resets on each new floor.
 
 ## Floors
 
-Each floor has a unique name, tileset, and enemy roster. A floor elite (elite mini-boss) spawns on every level. The Unmaker 🔥 — the final boss — awaits on floor 10.
+Each floor has a unique name, tileset, and enemy roster. A floor elite (mini-boss) spawns on every level. The Unmaker ☄️ — the final boss — awaits on floor 10.
 
 | Floor | Name | Elite |
 |-------|------|-------|
@@ -84,22 +87,31 @@ Each floor's rooms contain interactive furniture. Bump into a piece to activate 
 - **Kill Restore** — HP restored on each kill
 - **Thorns** — reflect damage back to attackers
 
-## SSH co-op (experimental)
+## MUD server (multiplayer SSH)
 
-Two players can share one game session over SSH.
+N players share a persistent world over SSH with tick-based updates.
 
 ```bash
 # build and start the server
 go build -o emoji-roguelike-server ./cmd/server
-./emoji-roguelike-server                  # listens on :2222
+./emoji-roguelike-server            # listens on :2222
 
-# connect from two terminals (any order)
+# connect from any number of terminals
 ssh -p 2222 -o StrictHostKeyChecking=no localhost
 ```
 
-Player 1 renders in yellow, Player 2 in fuchsia. Turn order: P1 → P2 → enemies. At most one active game at a time; additional connections wait in the lobby.
+Players spawn in **Emberveil** (Floor 0) — a safe starting city with NPCs, shops, and a healer. Kill enemies to earn gold, then return to the city to spend it. Death respawns you in Emberveil with gold reset.
 
 The server auto-generates an ed25519 host key (`server_host_key`) on first run.
+
+### City NPCs
+
+NPCs follow daily schedules and move around the city. Bump into them to interact:
+
+- **Shopkeepers** — buy equipment with gold
+- **Healer** — restore HP
+- **Dialogue NPCs** — lore and hints
+- **Animals** — ambient flavor
 
 ## Run history
 
