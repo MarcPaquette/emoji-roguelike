@@ -185,7 +185,7 @@ func (s *Server) tickFloorLocked(floor *Floor) {
 				sess.SpecialCooldown--
 			}
 			sess.TurnCount++
-			if sess.Class.PassiveRegen > 0 && sess.TurnCount%sess.Class.PassiveRegen == 0 {
+			if ri := effectiveRegenInterval(sess); ri > 0 && sess.TurnCount%ri == 0 {
 				restoreHP(floor.World, sess.PlayerID, 1)
 			}
 			sess.RunLog.TurnsPlayed++
@@ -221,7 +221,7 @@ func (s *Server) tickFloorLocked(floor *Floor) {
 			sess.SpecialCooldown--
 		}
 		sess.TurnCount++
-		if sess.Class.PassiveRegen > 0 && sess.TurnCount%sess.Class.PassiveRegen == 0 {
+		if ri := effectiveRegenInterval(sess); ri > 0 && sess.TurnCount%ri == 0 {
 			restoreHP(floor.World, sess.PlayerID, 1)
 		}
 		sess.RunLog.TurnsPlayed++
@@ -246,8 +246,9 @@ func (s *Server) tickFloorLocked(floor *Floor) {
 			if h.AttackerID != ecs.NilEntity && floor.World.Alive(h.AttackerID) {
 				maxThorns := 0
 				for _, sess := range s.sessions {
-					if sess.FloorNum == floor.Num && sess.FurnitureThorns > maxThorns {
-						maxThorns = sess.FurnitureThorns
+					t := sess.FurnitureThorns + computeSessionSkillBonuses(sess).ThornsDamage
+					if sess.FloorNum == floor.Num && t > maxThorns {
+						maxThorns = t
 					}
 				}
 				if maxThorns > 0 {
@@ -274,6 +275,8 @@ func (s *Server) tickFloorLocked(floor *Floor) {
 		if hp == nil || hp.(component.Health).Current <= 0 {
 			floorMessage(s.sessions, floor.Num, fmt.Sprintf("💀 %s has fallen!", sess.Name))
 			sess.RunLog.Timestamp = time.Now()
+			sess.RunLog.Level = sess.Level
+			sess.RunLog.SkillsLearned = sess.LearnedSkills
 			saveRunLog(sess.RunLog, s.Log)
 			s.Log.Info("player died", "player", sess.Name, "floor", floor.Num, "cause", sess.RunLog.CauseOfDeath, "turns", sess.RunLog.TurnsPlayed)
 			sess.SetDeathCountdown(DeathTicks)
@@ -393,7 +396,7 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 			sess.AddMessage(fmt.Sprintf("%s recharging (%d turns).", sess.Class.AbilityName, sess.SpecialCooldown))
 		} else {
 			s.useSpecialAbilityLocked(floor, sess)
-			sess.SpecialCooldown = sess.Class.AbilityCooldown
+			sess.SpecialCooldown = effectiveCooldown(sess)
 		}
 
 	default:
@@ -404,7 +407,7 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 		result, target := system.TryMove(floor.World, floor.GMap, sess.PlayerID, dx, dy)
 		switch result {
 		case system.MoveOK:
-			system.UpdateFOV(floor.World, floor.GMap, sess.PlayerID, sess.FovRadius)
+			system.UpdateFOV(floor.World, floor.GMap, sess.PlayerID, effectiveFOVRadius(sess))
 			sess.SnapshotFOV(floor.GMap)
 			s.checkInscriptionLocked(floor, sess)
 
@@ -437,6 +440,10 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 				lootDrops = lc.(component.Loot).Drops
 			}
 			res := system.Attack(floor.World, floor.Rng, sess.PlayerID, target)
+			if res.Dodged {
+				sess.AddMessage(fmt.Sprintf("The %s dodges your attack!", name))
+				return
+			}
 			sess.RunLog.DamageDealt += res.Damage
 			if res.Killed {
 				sess.RunLog.EnemiesKilled[name]++
@@ -444,6 +451,12 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 				sess.Gold += gold
 				sess.RunLog.GoldEarned += gold
 				floorMessage(s.sessions, floor.Num, fmt.Sprintf("%s kills the %s! (+%d💰)", sess.Name, name, gold))
+				// Grant XP for kill.
+				if assets.IsEliteGlyph(name) {
+					grantXPLocked(sess, assets.XPForEliteKill(floor.Num))
+				} else {
+					grantXPLocked(sess, assets.XPForKill(assets.ThreatForGlyph(name), floor.Num))
+				}
 				if !sess.DiscoveredEnemies[name] {
 					sess.DiscoveredEnemies[name] = true
 					if lore, ok := assets.EnemyLore[name]; ok {
@@ -460,9 +473,14 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 					restoreHP(floor.World, sess.PlayerID, sess.Class.KillRestoreHP)
 					sess.AddMessage(fmt.Sprintf("The kill feeds you. (+%d HP)", sess.Class.KillRestoreHP))
 				}
-				if sess.Class.KillHealChance > 0 && floor.Rng.Intn(100) < sess.Class.KillHealChance {
+				sb := computeSessionSkillBonuses(sess)
+				healChance := sess.Class.KillHealChance + sb.KillHealAdd
+				if healChance > 0 && floor.Rng.Intn(100) < healChance {
 					restoreHP(floor.World, sess.PlayerID, 2)
 					sess.AddMessage("Wild magic sparks! (+2 HP)")
+				}
+				if sb.KillHealBonus > 0 {
+					restoreHP(floor.World, sess.PlayerID, sb.KillHealBonus)
 				}
 				if sess.FurnitureKR {
 					restoreHP(floor.World, sess.PlayerID, 1)
@@ -481,7 +499,7 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 			tx, ty := pos.X+dx, pos.Y+dy
 			if floor.GMap.InBounds(tx, ty) && floor.GMap.At(tx, ty).Kind == gamemap.TileDoor {
 				floor.GMap.Set(tx, ty, gamemap.MakeFloor())
-				system.UpdateFOV(floor.World, floor.GMap, sess.PlayerID, sess.FovRadius)
+				system.UpdateFOV(floor.World, floor.GMap, sess.PlayerID, effectiveFOVRadius(sess))
 				sess.SnapshotFOV(floor.GMap)
 				sess.AddMessage("You open the door.")
 			}
@@ -568,15 +586,25 @@ func (s *Server) transitionFloorLocked(sess *Session, targetFloor int) {
 	// Restore inventory.
 	if savedInv != nil {
 		floor.World.Add(sess.PlayerID, *savedInv)
-		recalcMaxHP(floor.World, sess)
 	}
+
+	// Reapply level growth and skill bonuses to the new entity.
+	applyLevelGrowthLocked(floor.World, sess)
+	applySkillBonusesLocked(floor.World, sess)
+	recalcMaxHPWithSkills(floor.World, sess)
 
 	// AbilityFreeOnFloor: reset cooldown on each floor entry.
 	if sess.Class.AbilityFreeOnFloor {
 		sess.SpecialCooldown = 0
 	}
 
-	system.UpdateFOV(floor.World, floor.GMap, sess.PlayerID, sess.FovRadius)
+	// Grant XP for first-time floor entry.
+	if !sess.FloorsVisited[targetFloor] {
+		sess.FloorsVisited[targetFloor] = true
+		grantXPLocked(sess, assets.XPForFloorEntry(targetFloor))
+	}
+
+	system.UpdateFOV(floor.World, floor.GMap, sess.PlayerID, effectiveFOVRadius(sess))
 	sess.SnapshotFOV(floor.GMap)
 	sess.Renderer = render.NewRenderer(sess.Screen, targetFloor)
 	sess.Renderer.CenterOn(spawnX, spawnY)
@@ -636,11 +664,16 @@ func (s *Server) spawnPlayerLocked(sess *Session, floorNum int) {
 		}
 	}
 
+	// Reapply level growth and skill bonuses.
+	applyLevelGrowthLocked(floor.World, sess)
+	applySkillBonusesLocked(floor.World, sess)
+	recalcMaxHPWithSkills(floor.World, sess)
+
 	if sess.RunLog.FloorsReached < floorNum {
 		sess.RunLog.FloorsReached = floorNum
 	}
 
-	system.UpdateFOV(floor.World, floor.GMap, sess.PlayerID, sess.FovRadius)
+	system.UpdateFOV(floor.World, floor.GMap, sess.PlayerID, effectiveFOVRadius(sess))
 	sess.SnapshotFOV(floor.GMap)
 	sess.Renderer = render.NewRenderer(sess.Screen, floorNum)
 	sess.Renderer.CenterOn(sx, sy)
@@ -671,6 +704,12 @@ func (s *Server) respawnLocked(sess *Session) {
 	sess.BaseMaxHP = sess.Class.MaxHP
 	sess.PlayerID = ecs.NilEntity
 	sess.Gold = 0
+	sess.Level = 1
+	sess.XP = 0
+	sess.PendingLevels = 0
+	sess.LearnedSkills = nil
+	sess.Branch = ""
+	sess.FloorsVisited = make(map[int]bool)
 
 	sess.AddMessage("You respawn in Emberveil...")
 	s.spawnPlayerLocked(sess, 0)
@@ -720,7 +759,7 @@ func (s *Server) RenderSession(sess *Session) {
 	className := fmt.Sprintf("%s [%d online] 💰%d", sess.Class.Name, len(s.sessions), sess.Gold)
 
 	sess.Renderer.DrawHUD(floor.World, sess.PlayerID, sess.FloorNum, className,
-		sess.Messages, bonusATK, bonusDEF, sess.Class.AbilityName, sess.SpecialCooldown)
+		sess.Messages, bonusATK, bonusDEF, sess.Class.AbilityName, sess.SpecialCooldown, sess.Level, sess.PendingLevels)
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -849,6 +888,8 @@ func (s *Server) checkVictoryLocked(floor *Floor, sess *Session) {
 	sess.RunLog.CauseOfDeath = ""
 	floorMessage(s.sessions, floor.Num, fmt.Sprintf("🏆 %s has defeated the boss! The Spire's heart is theirs!", sess.Name))
 	sess.RunLog.Timestamp = time.Now()
+	sess.RunLog.Level = sess.Level
+	sess.RunLog.SkillsLearned = sess.LearnedSkills
 	saveRunLog(sess.RunLog, s.Log)
 	s.Log.Info("player victory", "player", sess.Name, "class", sess.Class.Name, "turns", sess.RunLog.TurnsPlayed)
 	sess.SetVictory()
@@ -895,6 +936,7 @@ func (s *Server) checkInscriptionLocked(floor *Floor, sess *Session) {
 		if ipos.X == pos.X && ipos.Y == pos.Y {
 			text := floor.World.Get(id, component.CInscription).(component.Inscription).Text
 			sess.RunLog.InscriptionsRead++
+			grantXPLocked(sess, assets.XPForInscription)
 			sess.AddMessage("📝 " + text)
 			return
 		}
@@ -931,6 +973,7 @@ func (s *Server) tryPickupLocked(floor *Floor, sess *Session) {
 		inv.Backpack = append(inv.Backpack, item)
 		floor.World.Add(sess.PlayerID, inv)
 		floor.World.DestroyEntity(itemID)
+		grantXPLocked(sess, assets.XPForPickup)
 		sess.AddMessage(fmt.Sprintf("You pick up %s. [i] to open inventory.", item.Name))
 		return
 	}
@@ -1063,7 +1106,7 @@ func (s *Server) interactFurnitureLocked(floor *Floor, sess *Session, id ecs.Ent
 	switch f.PassiveKind {
 	case component.PassiveKeenEye:
 		sess.FovRadius++
-		system.UpdateFOV(floor.World, floor.GMap, sess.PlayerID, sess.FovRadius)
+		system.UpdateFOV(floor.World, floor.GMap, sess.PlayerID, effectiveFOVRadius(sess))
 		sess.SnapshotFOV(floor.GMap)
 		sess.AddMessage("Your vision expands permanently.")
 	case component.PassiveKillRestore:
@@ -1073,6 +1116,7 @@ func (s *Server) interactFurnitureLocked(floor *Floor, sess *Session, id ecs.Ent
 		sess.FurnitureThorns++
 		sess.AddMessage("Sharp crystals form beneath your skin.")
 	}
+	grantXPLocked(sess, assets.XPForFurniture)
 	f.Used = true
 	floor.World.Add(id, f)
 }
@@ -1088,7 +1132,7 @@ func (s *Server) useSpecialAbilityLocked(floor *Floor, sess *Session) {
 		room := rooms[floor.Rng.Intn(len(rooms))]
 		x, y := room.Center()
 		floor.World.Add(sess.PlayerID, component.Position{X: x, Y: y})
-		system.UpdateFOV(floor.World, floor.GMap, sess.PlayerID, sess.FovRadius)
+		system.UpdateFOV(floor.World, floor.GMap, sess.PlayerID, effectiveFOVRadius(sess))
 		sess.SnapshotFOV(floor.GMap)
 		sess.AddMessage("Dimensional Rift tears open — you reappear elsewhere!")
 
@@ -1168,7 +1212,7 @@ func (s *Server) applyConsumableLocked(floor *Floor, sess *Session, item compone
 			room := rooms[floor.Rng.Intn(len(rooms))]
 			x, y := room.Center()
 			floor.World.Add(sess.PlayerID, component.Position{X: x, Y: y})
-			system.UpdateFOV(floor.World, floor.GMap, sess.PlayerID, sess.FovRadius)
+			system.UpdateFOV(floor.World, floor.GMap, sess.PlayerID, effectiveFOVRadius(sess))
 			sess.SnapshotFOV(floor.GMap)
 		}
 		sess.AddMessage("The Tesseract Cube warps you to a random location!")

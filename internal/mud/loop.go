@@ -130,6 +130,14 @@ func (s *Server) RunLoop(sess *Session) {
 						default:
 						}
 					}
+				case ActionLevelUp:
+					if sess.GetDeathCountdown() == 0 && sess.PendingLevels > 0 {
+						s.RunLevelUp(sess, eventCh)
+						select {
+						case sess.RenderCh <- struct{}{}:
+						default:
+						}
+					}
 				default:
 					sess.SetAction(action)
 				}

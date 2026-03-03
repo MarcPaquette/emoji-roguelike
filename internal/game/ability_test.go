@@ -38,6 +38,7 @@ func newAbilityTestGame(t *testing.T, classID string) *Game {
 		t.Fatalf("class %q not found in assets.Classes", classID)
 	}
 	g.fovRadius = g.selectedClass.FOVRadius
+	g.floorsVisited[1] = true // suppress floor-entry XP in tests
 	g.loadFloor(1)
 	return g
 }

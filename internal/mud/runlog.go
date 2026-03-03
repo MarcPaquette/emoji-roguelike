@@ -22,6 +22,8 @@ type RunLog struct {
 	DamageTaken      int            `json:"damage_taken"`
 	GoldEarned       int            `json:"gold_earned"`
 	CauseOfDeath     string         `json:"cause_of_death"`
+	Level            int            `json:"level"`
+	SkillsLearned    []string       `json:"skills_learned,omitempty"`
 }
 
 // saveRunLog appends the completed run as a single JSON line to runs.jsonl.

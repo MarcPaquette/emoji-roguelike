@@ -13,14 +13,15 @@ import (
 // DrawHUD renders the status bar and message log at the bottom of the screen.
 // bonusATK and bonusDEF are the combined effect+equipment bonus values computed by game.go.
 // abilityName is the class active ability name; abilityCooldown is turns remaining (0 = ready).
-func (r *Renderer) DrawHUD(w *ecs.World, playerID ecs.EntityID, floor int, className string, messages []string, bonusATK, bonusDEF int, abilityName string, abilityCooldown int) {
+// level is the player's current level; pendingLevels > 0 shows a LEVEL UP notification.
+func (r *Renderer) DrawHUD(w *ecs.World, playerID ecs.EntityID, floor int, className string, messages []string, bonusATK, bonusDEF int, abilityName string, abilityCooldown int, level, pendingLevels int) {
 	_, screenH := r.screen.Size()
 	hudY := screenH - 5
 
 	// Separator line.
 	r.drawHLine(hudY, tcell.ColorGray)
 
-	// Row 1: HP / ATK / DEF / Floor
+	// Row 1: Class Lv.N HP ATK DEF Floor [LEVEL UP!]
 	hpText := "HP: ?"
 	if c := w.Get(playerID, component.CHealth); c != nil {
 		hp := c.(component.Health)
@@ -41,16 +42,26 @@ func (r *Renderer) DrawHUD(w *ecs.World, playerID ecs.EntityID, floor int, class
 	if className != "" {
 		classText = fmt.Sprintf("[%s]  ", className)
 	}
+	lvText := ""
+	if level > 0 {
+		lvText = fmt.Sprintf("Lv.%d  ", level)
+	}
 	var floorText string
 	if floor == 0 {
-		floorText = "  ✨ Emberveil"
+		floorText = "  Emberveil"
 	} else if floor > 0 && floor < len(assets.FloorNames) {
-		floorText = fmt.Sprintf("  Floor: %d  %s", floor, assets.FloorNames[floor])
+		floorText = fmt.Sprintf("  Floor:%d %s", floor, assets.FloorNames[floor])
 	} else {
-		floorText = fmt.Sprintf("  Floor: %d", floor)
+		floorText = fmt.Sprintf("  Floor:%d", floor)
 	}
-	statusLine := classText + hpText + atkText + floorText
+	statusLine := classText + lvText + hpText + atkText + floorText
 	r.drawText(0, hudY+1, statusLine, tcell.StyleDefault.Foreground(tcell.ColorWhite))
+
+	// Append LEVEL UP! notification in bright green.
+	if pendingLevels > 0 {
+		lvUpText := "  LEVEL UP!"
+		r.drawText(len([]rune(statusLine)), hudY+1, lvUpText, tcell.StyleDefault.Foreground(tcell.ColorGreen).Bold(true))
+	}
 
 	// Row 2: equipped items
 	inv := component.Inventory{}
@@ -85,8 +96,12 @@ func (r *Renderer) DrawHUD(w *ecs.World, playerID ecs.EntityID, floor int, class
 			abilityStatus = fmt.Sprintf("  [z]%s:RDY", abilityName)
 		}
 	}
-	equipLine := fmt.Sprintf("HEAD:%s  BODY:%s  FEET:%s  WEAP:%s  OFHND:%s  [i]nventory%s",
-		headG, bodyG, feetG, weapG, offG, abilityStatus)
+	levelUpHint := ""
+	if pendingLevels > 0 {
+		levelUpHint = fmt.Sprintf("  [x]Level Up(%d)", pendingLevels)
+	}
+	equipLine := fmt.Sprintf("HEAD:%s  BODY:%s  FEET:%s  WEAP:%s  OFHND:%s  [i]nventory%s%s",
+		headG, bodyG, feetG, weapG, offG, abilityStatus, levelUpHint)
 	r.drawText(0, hudY+2, equipLine, tcell.StyleDefault.Foreground(tcell.ColorAqua))
 
 	// Rows 3-4: last 2 wrapped message lines
@@ -153,7 +168,7 @@ func wrapText(text string, width int) []string {
 func (r *Renderer) drawHLine(y int, color tcell.Color) {
 	w, _ := r.screen.Size()
 	style := tcell.StyleDefault.Foreground(color)
-	for x := 0; x < w; x++ {
+	for x := range w {
 		r.screen.SetContent(x, y, '─', nil, style)
 	}
 }

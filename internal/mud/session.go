@@ -44,6 +44,14 @@ type Session struct {
 	SpecialCooldown int
 	Gold            int // current gold; earned by killing enemies, spent at shop
 
+	// Leveling state.
+	Level         int
+	XP            int
+	PendingLevels int
+	LearnedSkills []string
+	Branch        string
+	FloorsVisited map[int]bool
+
 	// PendingNPC is set by the tick goroutine to trigger a shop modal.
 	// Read and cleared in RunLoop's RenderCh handler (both under s.mu).
 	PendingNPC ecs.EntityID
@@ -90,6 +98,8 @@ func NewSession(id int, name string, color tcell.Color, screen tcell.Screen) *Se
 		Screen:            screen,
 		Messages:          nil,
 		DiscoveredEnemies: make(map[string]bool),
+		Level:             1,
+		FloorsVisited:     make(map[int]bool),
 		RunLog: RunLog{
 			EnemiesKilled: make(map[string]int),
 			ItemsUsed:     make(map[string]int),

@@ -70,8 +70,10 @@ Pure data structs — zero logic. Each implements `Type() ComponentType`. The io
 | `CLoot` | 14 | `Loot` — loot drop data |
 | `CFurniture` | 15 | `Furniture{Glyph, Name, Description, BonusATK/DEF/MaxHP, HealHP, PassiveKind, Used, IsRepeatable}` |
 | `CNPC` | 16 | `NPC{Name, Kind, DialogueLines, Glyph}` — city NPCs (Dialogue/Healer/Shop/Animal) |
+| `CNPCMovement` | 17 | `NPCMovement{Schedule, Speed}` — NPC daily movement schedules |
+| `CSkillBonuses` | 18 | `SkillBonuses{BonusATK/DEF/MaxHP/FOV, DodgeChance, KillHealBonus/Add, ThornsDamage, CooldownReduce, RegenReduce}` |
 
-**Next available:** 17. Never reuse a number.
+**Next available:** 19. Never reuse a number.
 
 ### Dependency rule (strict)
 ```

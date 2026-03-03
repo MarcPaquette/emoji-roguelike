@@ -370,7 +370,7 @@ func (g *CoopGame) renderAll() {
 		equipATK, equipDEF := g.coopEquipBonuses(p)
 		bonusATK := system.GetAttackBonus(g.world, p.id) + equipATK
 		bonusDEF := system.GetDefenseBonus(g.world, p.id) + equipDEF
-		p.renderer.DrawHUD(g.world, p.id, g.floor, p.class.Name, g.messages, bonusATK, bonusDEF, p.class.AbilityName, p.specialCooldown)
+		p.renderer.DrawHUD(g.world, p.id, g.floor, p.class.Name, g.messages, bonusATK, bonusDEF, p.class.AbilityName, p.specialCooldown, 1, 0)
 	}
 }
 

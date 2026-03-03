@@ -455,3 +455,26 @@ func FloorElite(floor int) *generate.EnemySpawnEntry {
 	}
 	return floorElites[floor]
 }
+
+// ThreatForGlyph looks up the ThreatCost of an enemy by its glyph.
+// Returns 0 if not found (e.g. for elites with ThreatCost 0).
+func ThreatForGlyph(glyph string) int {
+	for _, table := range EnemyTables {
+		for _, entry := range table {
+			if entry.Glyph == glyph {
+				return entry.ThreatCost
+			}
+		}
+	}
+	return 0
+}
+
+// IsEliteGlyph returns true if the glyph belongs to a floor elite.
+func IsEliteGlyph(glyph string) bool {
+	for _, e := range floorElites {
+		if e != nil && e.Glyph == glyph {
+			return true
+		}
+	}
+	return false
+}

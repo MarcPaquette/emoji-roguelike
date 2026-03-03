@@ -24,6 +24,7 @@ func NewPlayer(w *ecs.World, x, y int, class assets.ClassDef) ecs.EntityID {
 	w.Add(id, component.Combat{Attack: class.Attack, Defense: class.Defense})
 	w.Add(id, component.Inventory{Capacity: 8})
 	w.Add(id, component.Effects{})
+	w.Add(id, component.SkillBonuses{})
 	w.Add(id, component.TagPlayer{})
 	w.Add(id, component.TagBlocking{})
 	return id

@@ -8,8 +8,9 @@ import (
 
 // AttackResult holds the outcome of one attack.
 type AttackResult struct {
-	Damage        int
-	Killed        bool
+	Damage         int
+	Killed         bool
+	Dodged         bool  // true if the defender dodged the attack entirely
 	SpecialApplied uint8 // 0=none 1=poison 2=weaken 3=lifedrain
 	DrainedAmount  int   // HP healed by lifedrain
 }
@@ -36,6 +37,24 @@ func equipDEFBonus(w *ecs.World, id ecs.EntityID) int {
 		inv.Head.BonusDEF + inv.Body.BonusDEF + inv.Feet.BonusDEF
 }
 
+// skillATKBonus returns the ATK bonus from CSkillBonuses (if present).
+func skillATKBonus(w *ecs.World, id ecs.EntityID) int {
+	c := w.Get(id, component.CSkillBonuses)
+	if c == nil {
+		return 0
+	}
+	return c.(component.SkillBonuses).BonusATK
+}
+
+// skillDEFBonus returns the DEF bonus from CSkillBonuses (if present).
+func skillDEFBonus(w *ecs.World, id ecs.EntityID) int {
+	c := w.Get(id, component.CSkillBonuses)
+	if c == nil {
+		return 0
+	}
+	return c.(component.SkillBonuses).BonusDEF
+}
+
 // Attack resolves one attack from attacker against defender.
 // Damage formula: max(1, atk+bonus-def) + rand.Intn(3)
 // If defender HP drops to ≤ 0, it is destroyed and Killed=true.
@@ -48,12 +67,20 @@ func Attack(w *ecs.World, rng *rand.Rand, attackerID, defenderID ecs.EntityID) A
 		return AttackResult{}
 	}
 
+	// Dodge check: if defender has dodge chance from skills, check before damage.
+	if sb := w.Get(defenderID, component.CSkillBonuses); sb != nil {
+		dodge := sb.(component.SkillBonuses).DodgeChance
+		if dodge > 0 && rng.Intn(100) < dodge {
+			return AttackResult{Dodged: true}
+		}
+	}
+
 	cbt := atkComp.(component.Combat)
 	def := defComp.(component.Combat).Defense
 	hp := hpComp.(component.Health)
 
-	atk := cbt.Attack + GetAttackBonus(w, attackerID) + equipATKBonus(w, attackerID)
-	def += GetDefenseBonus(w, defenderID) + equipDEFBonus(w, defenderID) - GetArmorBreakPenalty(w, defenderID)
+	atk := cbt.Attack + GetAttackBonus(w, attackerID) + equipATKBonus(w, attackerID) + skillATKBonus(w, attackerID)
+	def += GetDefenseBonus(w, defenderID) + equipDEFBonus(w, defenderID) + skillDEFBonus(w, defenderID) - GetArmorBreakPenalty(w, defenderID)
 	base := atk - def
 	if base < 1 {
 		base = 1

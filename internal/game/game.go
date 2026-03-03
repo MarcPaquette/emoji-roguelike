@@ -41,6 +41,8 @@ type RunLog struct {
 	DamageDealt      int            `json:"damage_dealt"`
 	DamageTaken      int            `json:"damage_taken"`
 	CauseOfDeath     string         `json:"cause_of_death"` // last thing that hurt the player ("poison" or enemy glyph)
+	Level            int            `json:"level"`
+	SkillsLearned    []string       `json:"skills_learned,omitempty"`
 }
 
 // Game is the top-level orchestrator.
@@ -66,6 +68,18 @@ type Game struct {
 	furnitureKillRestore bool // restore 1 HP on each kill
 	// Active ability state.
 	specialCooldown int // turns until z-ability can be used again
+	// Leveling state.
+	playerLevel   int
+	playerXP      int
+	pendingLevels int
+	learnedSkills []string        // skill IDs
+	branch        string          // "", "A", "B"
+	floorsVisited map[int]bool    // track first-entry XP
+	// Cached skill bonus totals.
+	skillBonusATK   int
+	skillBonusDEF   int
+	skillBonusMaxHP int
+	skillBonusFOV   int
 }
 
 // New creates and returns a Game with screen initialized.
@@ -106,6 +120,16 @@ func (g *Game) resetForRun() {
 	g.furnitureThorns = 0
 	g.furnitureKillRestore = false
 	g.specialCooldown = 0
+	g.playerLevel = 1
+	g.playerXP = 0
+	g.pendingLevels = 0
+	g.learnedSkills = nil
+	g.branch = ""
+	g.floorsVisited = make(map[int]bool)
+	g.skillBonusATK = 0
+	g.skillBonusDEF = 0
+	g.skillBonusMaxHP = 0
+	g.skillBonusFOV = 0
 }
 
 // loadFloor generates and populates the given floor.
@@ -199,12 +223,22 @@ func (g *Game) loadFloor(floor int) {
 		}
 	}
 
+	// Reapply skill bonuses to the new player entity.
+	g.applySkillBonuses()
+	g.recalcPlayerMaxHP()
+
 	// Reset ability cooldown on each floor entry for classes with AbilityFreeOnFloor.
 	if g.selectedClass.AbilityFreeOnFloor {
 		g.specialCooldown = 0
 	}
 
-	system.UpdateFOV(g.world, g.gmap, g.playerID, g.fovRadius)
+	// Grant XP for first-time floor entry.
+	if !g.floorsVisited[floor] {
+		g.floorsVisited[floor] = true
+		g.grantXP(assets.XPForFloorEntry(floor))
+	}
+
+	system.UpdateFOV(g.world, g.gmap, g.playerID, g.effectiveFOVRadius())
 	g.renderer = render.NewRenderer(g.screen, floor)
 	g.renderer.CenterOn(px, py)
 
@@ -241,7 +275,7 @@ func (g *Game) Run() {
 			equipATK, equipDEF := g.equipBonuses()
 			bonusATK := system.GetAttackBonus(g.world, g.playerID) + equipATK
 			bonusDEF := system.GetDefenseBonus(g.world, g.playerID) + equipDEF
-			g.renderer.DrawHUD(g.world, g.playerID, g.floor, g.selectedClass.Name, g.messages, bonusATK, bonusDEF, g.selectedClass.AbilityName, g.specialCooldown)
+			g.renderer.DrawHUD(g.world, g.playerID, g.floor, g.selectedClass.Name, g.messages, bonusATK, bonusDEF, g.selectedClass.AbilityName, g.specialCooldown, g.playerLevel, g.pendingLevels)
 
 			ev := g.screen.PollEvent()
 			switch ev := ev.(type) {
@@ -258,7 +292,7 @@ func (g *Game) Run() {
 						equipATK, equipDEF := g.equipBonuses()
 						bonusATK := system.GetAttackBonus(g.world, g.playerID) + equipATK
 						bonusDEF := system.GetDefenseBonus(g.world, g.playerID) + equipDEF
-						g.renderer.DrawHUD(g.world, g.playerID, g.floor, g.selectedClass.Name, g.messages, bonusATK, bonusDEF, g.selectedClass.AbilityName, g.specialCooldown)
+						g.renderer.DrawHUD(g.world, g.playerID, g.floor, g.selectedClass.Name, g.messages, bonusATK, bonusDEF, g.selectedClass.AbilityName, g.specialCooldown, g.playerLevel, g.pendingLevels)
 					}) {
 						return
 					}
@@ -270,6 +304,8 @@ func (g *Game) Run() {
 
 		g.runLog.Victory = g.state == StateVictory
 		g.runLog.Timestamp = time.Now()
+		g.runLog.Level = g.playerLevel
+		g.runLog.SkillsLearned = g.learnedSkills
 		if g.runLog.Victory {
 			g.runLog.CauseOfDeath = ""
 		}
@@ -292,7 +328,7 @@ func (g *Game) processAction(action Action) {
 		if g.specialCooldown > 0 {
 			g.specialCooldown--
 		}
-		if g.selectedClass.PassiveRegen > 0 && g.runLog.TurnsPlayed%g.selectedClass.PassiveRegen == 0 {
+		if ri := g.effectiveRegenInterval(); ri > 0 && g.runLog.TurnsPlayed%ri == 0 {
 			g.restorePlayerHP(1)
 		}
 		hits := system.ProcessAI(g.world, g.gmap, []ecs.EntityID{g.playerID}, g.rng)
@@ -300,10 +336,11 @@ func (g *Game) processAction(action Action) {
 			if h.Damage > 0 {
 				g.runLog.DamageTaken += h.Damage
 				g.runLog.CauseOfDeath = h.EnemyGlyph
-				if g.furnitureThorns > 0 && h.AttackerID != ecs.NilEntity && g.world.Alive(h.AttackerID) {
+				totalThorns := g.furnitureThorns + g.computeSkillBonuses().ThornsDamage
+				if totalThorns > 0 && h.AttackerID != ecs.NilEntity && g.world.Alive(h.AttackerID) {
 					if hp := g.world.Get(h.AttackerID, component.CHealth); hp != nil {
 						hpVal := hp.(component.Health)
-						hpVal.Current -= g.furnitureThorns
+						hpVal.Current -= totalThorns
 						g.world.Add(h.AttackerID, hpVal)
 					}
 				}
@@ -376,6 +413,13 @@ func (g *Game) processAction(action Action) {
 	case ActionInventory:
 		turnUsed = g.runInventoryScreen()
 
+	case ActionLevelUp:
+		if g.pendingLevels > 0 {
+			g.runLevelUpScreen()
+		} else {
+			g.addMessage("No pending level-ups.")
+		}
+
 	case ActionSpecialAbility:
 		if g.selectedClass.AbilityCooldown == 0 {
 			g.addMessage("No special ability.")
@@ -383,7 +427,7 @@ func (g *Game) processAction(action Action) {
 			g.addMessage(fmt.Sprintf("%s recharging (%d turns).", g.selectedClass.AbilityName, g.specialCooldown))
 		} else {
 			g.useSpecialAbility()
-			g.specialCooldown = g.selectedClass.AbilityCooldown
+			g.specialCooldown = g.effectiveCooldown()
 			turnUsed = true
 		}
 
@@ -394,7 +438,7 @@ func (g *Game) processAction(action Action) {
 			switch result {
 			case system.MoveOK:
 				turnUsed = true
-				system.UpdateFOV(g.world, g.gmap, g.playerID, g.fovRadius)
+				system.UpdateFOV(g.world, g.gmap, g.playerID, g.effectiveFOVRadius())
 				g.checkInscription()
 			case system.MoveInteract:
 				g.interactFurniture(target)
@@ -409,10 +453,21 @@ func (g *Game) processAction(action Action) {
 					lootDrops = lc.(component.Loot).Drops
 				}
 				res := system.Attack(g.world, g.rng, g.playerID, target)
+				if res.Dodged {
+					g.addMessage(fmt.Sprintf("The %s dodges your attack!", name))
+					turnUsed = true
+					break
+				}
 				g.runLog.DamageDealt += res.Damage
 				if res.Killed {
 					g.runLog.EnemiesKilled[glyph]++
 					g.addMessage(fmt.Sprintf("You kill the %s!", name))
+					// Grant XP for kill.
+					if assets.IsEliteGlyph(glyph) {
+						g.grantXP(assets.XPForEliteKill(g.floor))
+					} else {
+						g.grantXP(assets.XPForKill(assets.ThreatForGlyph(glyph), g.floor))
+					}
 					if !g.discoveredEnemies[glyph] {
 						g.discoveredEnemies[glyph] = true
 						if lore, ok := assets.EnemyLore[glyph]; ok {
@@ -429,9 +484,14 @@ func (g *Game) processAction(action Action) {
 						g.restorePlayerHP(g.selectedClass.KillRestoreHP)
 						g.addMessage(fmt.Sprintf("The kill feeds you. (+%d HP)", g.selectedClass.KillRestoreHP))
 					}
-					if g.selectedClass.KillHealChance > 0 && g.rng.Intn(100) < g.selectedClass.KillHealChance {
+					sb := g.computeSkillBonuses()
+					healChance := g.selectedClass.KillHealChance + sb.KillHealAdd
+					if healChance > 0 && g.rng.Intn(100) < healChance {
 						g.restorePlayerHP(2)
 						g.addMessage("Wild magic sparks! (+2 HP)")
+					}
+					if sb.KillHealBonus > 0 {
+						g.restorePlayerHP(sb.KillHealBonus)
 					}
 					if g.furnitureKillRestore {
 						g.restorePlayerHP(1)
@@ -446,7 +506,7 @@ func (g *Game) processAction(action Action) {
 				tx, ty := pos.X+dx, pos.Y+dy
 				if g.gmap.InBounds(tx, ty) && g.gmap.At(tx, ty).Kind == gamemap.TileDoor {
 					g.gmap.Set(tx, ty, gamemap.MakeFloor())
-					system.UpdateFOV(g.world, g.gmap, g.playerID, g.fovRadius)
+					system.UpdateFOV(g.world, g.gmap, g.playerID, g.effectiveFOVRadius())
 					g.addMessage("You open the door.")
 					turnUsed = true
 				}
@@ -461,7 +521,7 @@ func (g *Game) processAction(action Action) {
 		if g.specialCooldown > 0 {
 			g.specialCooldown--
 		}
-		if g.selectedClass.PassiveRegen > 0 && g.runLog.TurnsPlayed%g.selectedClass.PassiveRegen == 0 {
+		if ri := g.effectiveRegenInterval(); ri > 0 && g.runLog.TurnsPlayed%ri == 0 {
 			g.restorePlayerHP(1)
 		}
 		hits := system.ProcessAI(g.world, g.gmap, []ecs.EntityID{g.playerID}, g.rng)
@@ -470,10 +530,11 @@ func (g *Game) processAction(action Action) {
 				g.runLog.DamageTaken += h.Damage
 				g.runLog.CauseOfDeath = h.EnemyGlyph
 				// Thorns: reflect damage back to the attacker.
-				if g.furnitureThorns > 0 && h.AttackerID != ecs.NilEntity && g.world.Alive(h.AttackerID) {
+				totalThorns := g.furnitureThorns + g.computeSkillBonuses().ThornsDamage
+				if totalThorns > 0 && h.AttackerID != ecs.NilEntity && g.world.Alive(h.AttackerID) {
 					if hp := g.world.Get(h.AttackerID, component.CHealth); hp != nil {
 						hpVal := hp.(component.Health)
-						hpVal.Current -= g.furnitureThorns
+						hpVal.Current -= totalThorns
 						g.world.Add(h.AttackerID, hpVal)
 					}
 				}
@@ -568,6 +629,7 @@ func (g *Game) tryPickup() {
 			inv.Backpack = append(inv.Backpack, item)
 			g.world.Add(g.playerID, inv)
 			g.world.DestroyEntity(itemID)
+			g.grantXP(assets.XPForPickup)
 			g.addMessage(fmt.Sprintf("You pick up %s. [i] to open inventory.", item.Name))
 			return
 		}
@@ -684,7 +746,7 @@ func (g *Game) recalcPlayerMaxHP() {
 	}
 	inv := invComp.(component.Inventory)
 	bonus := inv.Head.BonusMaxHP + inv.Body.BonusMaxHP + inv.Feet.BonusMaxHP +
-		inv.MainHand.BonusMaxHP + inv.OffHand.BonusMaxHP
+		inv.MainHand.BonusMaxHP + inv.OffHand.BonusMaxHP + g.skillBonusMaxHP
 	hpComp := g.world.Get(g.playerID, component.CHealth)
 	if hpComp == nil {
 		return
@@ -704,6 +766,7 @@ func (g *Game) checkInscription() {
 		if ipos.X == pos.X && ipos.Y == pos.Y {
 			text := g.world.Get(id, component.CInscription).(component.Inscription).Text
 			g.runLog.InscriptionsRead++
+			g.grantXP(assets.XPForInscription)
 			g.addMessage("📝 " + text)
 			return
 		}
@@ -766,7 +829,7 @@ func (g *Game) interactFurniture(id ecs.EntityID) {
 	switch f.PassiveKind {
 	case component.PassiveKeenEye:
 		g.fovRadius++
-		system.UpdateFOV(g.world, g.gmap, g.playerID, g.fovRadius)
+		system.UpdateFOV(g.world, g.gmap, g.playerID, g.effectiveFOVRadius())
 		g.addMessage("Your vision expands permanently.")
 	case component.PassiveKillRestore:
 		g.furnitureKillRestore = true
@@ -776,6 +839,7 @@ func (g *Game) interactFurniture(id ecs.EntityID) {
 		g.addMessage("Sharp crystals form beneath your skin.")
 	}
 
+	g.grantXP(assets.XPForFurniture)
 	f.Used = true
 	g.world.Add(id, f)
 }
@@ -788,7 +852,7 @@ func (g *Game) teleportPlayer() {
 	room := rooms[g.rng.Intn(len(rooms))]
 	x, y := room.Center()
 	g.world.Add(g.playerID, component.Position{X: x, Y: y})
-	system.UpdateFOV(g.world, g.gmap, g.playerID, g.fovRadius)
+	system.UpdateFOV(g.world, g.gmap, g.playerID, g.effectiveFOVRadius())
 }
 
 // useSpecialAbility fires the class active ability (z key).
