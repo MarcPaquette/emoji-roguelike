@@ -47,12 +47,12 @@ func (r *Renderer) DrawHUD(w *ecs.World, playerID ecs.EntityID, floor int, class
 		lvText = fmt.Sprintf("Lv.%d  ", level)
 	}
 	var floorText string
-	if floor == 0 {
-		floorText = "  Emberveil"
-	} else if floor > 0 && floor < len(assets.FloorNames) {
-		floorText = fmt.Sprintf("  Floor:%d %s", floor, assets.FloorNames[floor])
+	name := assets.FloorName(floor)
+	df := assets.DungeonFloor(floor)
+	if df == 0 {
+		floorText = "  " + name
 	} else {
-		floorText = fmt.Sprintf("  Floor:%d", floor)
+		floorText = fmt.Sprintf("  Floor:%d %s", df, name)
 	}
 	statusLine := classText + lvText + hpText + atkText + floorText
 	r.drawText(0, hudY+1, statusLine, tcell.StyleDefault.Foreground(tcell.ColorWhite))

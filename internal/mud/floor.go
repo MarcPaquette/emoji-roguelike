@@ -41,6 +41,11 @@ type Floor struct {
 
 	// SafeZone disables combat and AI ticking (used for the starting city).
 	SafeZone bool
+
+	// Portals maps (x,y) positions to target floor numbers for inter-city travel.
+	// A StairsDown tile at a portal position transitions to the portal's target
+	// instead of the default FloorNum+1.
+	Portals map[[2]int]int
 }
 
 // newFloor generates a fresh dungeon floor using the same level config as the
@@ -74,12 +79,13 @@ func newFloor(num int, rng *rand.Rand) *Floor {
 		stairsDownX, stairsDownY = last.Center()
 	}
 	stairsUpX, stairsUpY := -1, -1 // -1 = not present (floor 0 / city)
-	if num > 0 {
+	df := assets.DungeonFloor(num)
+	if df > 0 {
 		stairsUpX, stairsUpY = px, py // stairs up shares spawn tile
 	}
-	// Floor 1 in MUD: manually place stairs-up tile so players can return to the city.
-	// (bsp.go places stairs-up only for num > 1; floor 1 needs special handling here.)
-	if num == 1 {
+	// First dungeon floor in MUD: manually place stairs-up tile so players
+	// can return to the city. (bsp.go places stairs-up only for df > 1.)
+	if df == 1 {
 		gmap.Set(px, py, gamemap.MakeStairsUp())
 	}
 
@@ -99,11 +105,14 @@ func newFloor(num int, rng *rand.Rand) *Floor {
 }
 
 // levelConfig mirrors the single-player levelConfig from game/levels.go.
+// Supports both Spire (1-10) and Chronoliths (101-110) floor numbers.
 func levelConfig(floor int, rng *rand.Rand) *generate.Config {
+	df := assets.DungeonFloor(floor)
 	t := 0.0
 	if MaxFloors > 1 {
-		t = float64(floor-1) / float64(MaxFloors-1)
+		t = float64(df-1) / float64(MaxFloors-1)
 	}
+	furn := assets.FurnitureFor(floor)
 	return &generate.Config{
 		MapWidth:         lerpi(40, 90, t),
 		MapHeight:        lerpi(20, 50, t),
@@ -113,25 +122,25 @@ func levelConfig(floor int, rng *rand.Rand) *generate.Config {
 		MinRoomSize:      4,
 		RoomPadding:      1,
 		CorridorStyle:    generate.CorridorLShaped,
-		FloorNumber:      floor,
+		FloorNumber:      df,
 		EnemyBudget:      lerpi(5, 55, t),
 		ItemCount:        lerpi(3, 8, t),
 		EquipCount:       lerpi(1, 3, t),
-		EnemyTable:       assets.EnemyTables[floor],
+		EnemyTable:       assets.EnemyTable(floor),
 		ItemTable:        itemTableForFloor(floor),
-		EquipTable:       assets.EquipTablesForFloor(floor),
-		InscriptionTexts: assets.WallWritings[floor],
+		EquipTable:       assets.EquipTablesForFloor(df),
+		InscriptionTexts: assets.WallWritingsFor(floor),
 		InscriptionCount: 2 + rng.Intn(4),
-		EliteEnemy:       assets.FloorElite(floor),
-		CommonFurniture:  assets.FurnitureByFloor[floor].Common,
-		RareFurniture:    assets.FurnitureByFloor[floor].Rare,
+		EliteEnemy:       assets.EliteEnemy(floor),
+		CommonFurniture:  furn.Common,
+		RareFurniture:    furn.Rare,
 		FurniturePerRoom: 2,
 		Rand:             rng,
 	}
 }
 
 func itemTableForFloor(floor int) []generate.ItemSpawnEntry {
-	base := assets.ItemTables[floor]
+	base := assets.ItemTable(floor)
 	var extra []generate.ItemSpawnEntry
 	if floor >= 3 {
 		extra = append(extra, generate.ItemSpawnEntry{Glyph: assets.GlyphResonanceBurst, Name: "Resonance Burst"})
@@ -240,8 +249,9 @@ func drawVictoryScreen(sess *Session) {
 		totalItems += c
 	}
 	floorName := ""
-	if log.FloorsReached >= 1 && log.FloorsReached <= MaxFloors {
-		floorName = fmt.Sprintf("Floor %d — %s", log.FloorsReached, assets.FloorNames[log.FloorsReached])
+	df := assets.DungeonFloor(log.FloorsReached)
+	if df >= 1 && df <= MaxFloors {
+		floorName = fmt.Sprintf("Floor %d — %s", df, assets.FloorName(log.FloorsReached))
 	}
 
 	y := 1

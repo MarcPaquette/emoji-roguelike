@@ -29,14 +29,14 @@ func levelConfig(floor int, rng *rand.Rand) *generate.Config {
 		EnemyBudget:   lerpi(5, 55, t),
 		ItemCount:     lerpi(3, 8, t),
 		EquipCount:    lerpi(1, 3, t),
-		EnemyTable:       assets.EnemyTables[floor],
+		EnemyTable:       assets.EnemyTable(floor),
 		ItemTable:        itemTableForFloor(floor),
 		EquipTable:       assets.EquipTablesForFloor(floor),
-		InscriptionTexts: assets.WallWritings[floor],
+		InscriptionTexts: assets.WallWritingsFor(floor),
 		InscriptionCount: 2 + rng.Intn(4), // 2–5 per floor
-		EliteEnemy:       assets.FloorElite(floor),
-		CommonFurniture:  assets.FurnitureByFloor[floor].Common,
-		RareFurniture:    assets.FurnitureByFloor[floor].Rare,
+		EliteEnemy:       assets.EliteEnemy(floor),
+		CommonFurniture:  assets.FurnitureFor(floor).Common,
+		RareFurniture:    assets.FurnitureFor(floor).Rare,
 		FurniturePerRoom: 2, // 1–2 pieces per room
 		Rand:             rng,
 	}
@@ -45,7 +45,7 @@ func levelConfig(floor int, rng *rand.Rand) *generate.Config {
 // itemTableForFloor returns the consumable item table for a given floor,
 // including any new consumables unlocked at that floor.
 func itemTableForFloor(floor int) []generate.ItemSpawnEntry {
-	base := assets.ItemTables[floor]
+	base := assets.ItemTable(floor)
 	var extra []generate.ItemSpawnEntry
 
 	if floor >= 3 {

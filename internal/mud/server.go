@@ -58,7 +58,8 @@ func (s *Server) NextSessionID() (int, tcell.Color) {
 	return id, color
 }
 
-// NewServer creates a Server and pre-generates floor 0 (the city of Emberveil).
+// NewServer creates a Server and pre-generates both cities:
+// floor 0 (Emberveil) and floor 100 (Anchorpoint).
 func NewServer(rng *rand.Rand, log *slog.Logger) *Server {
 	s := &Server{
 		floors: make(map[int]*Floor),
@@ -66,6 +67,7 @@ func NewServer(rng *rand.Rand, log *slog.Logger) *Server {
 		Log:    log,
 	}
 	s.floors[0] = newCityFloor(rand.New(rand.NewSource(rng.Int63())))
+	s.floors[100] = newChronolithsCityFloor(rand.New(rand.NewSource(rng.Int63())))
 	return s
 }
 
@@ -359,14 +361,31 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 		pos := posComp.(component.Position)
 		tile := floor.GMap.At(pos.X, pos.Y)
 		switch {
-		case tile.Kind == gamemap.TileStairsDown && sess.FloorNum < MaxFloors:
-			s.transitionFloorLocked(sess, sess.FloorNum+1)
-			return
-		case tile.Kind == gamemap.TileStairsDown && sess.FloorNum >= MaxFloors:
+		case tile.Kind == gamemap.TileStairsDown:
+			// Check for portal destination (inter-city travel).
+			target := sess.FloorNum + 1
+			if floor.Portals != nil {
+				if dest, ok := floor.Portals[[2]int{pos.X, pos.Y}]; ok {
+					target = dest
+				}
+			}
+			if target <= assets.DungeonMaxFloor(target) {
+				s.transitionFloorLocked(sess, target)
+				return
+			}
 			sess.AddMessage("There is nowhere further to descend.")
-		case tile.Kind == gamemap.TileStairsUp && sess.FloorNum > 0:
-			s.transitionFloorLocked(sess, sess.FloorNum-1)
-			return
+		case tile.Kind == gamemap.TileStairsUp:
+			cityFloor := assets.DungeonCityFloor(sess.FloorNum)
+			df := assets.DungeonFloor(sess.FloorNum)
+			if df > 0 {
+				if df == 1 {
+					s.transitionFloorLocked(sess, cityFloor)
+				} else {
+					s.transitionFloorLocked(sess, sess.FloorNum-1)
+				}
+				return
+			}
+			sess.AddMessage("There are no stairs up here.")
 		case action == ActionDescend:
 			sess.AddMessage("There are no stairs down here.")
 		default:
@@ -380,8 +399,18 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 		}
 		pos := posComp.(component.Position)
 		tile := floor.GMap.At(pos.X, pos.Y)
-		if tile.Kind == gamemap.TileStairsUp && sess.FloorNum > 0 {
-			s.transitionFloorLocked(sess, sess.FloorNum-1)
+		if tile.Kind == gamemap.TileStairsUp {
+			cityFloor := assets.DungeonCityFloor(sess.FloorNum)
+			df := assets.DungeonFloor(sess.FloorNum)
+			if df > 0 {
+				if df == 1 {
+					s.transitionFloorLocked(sess, cityFloor)
+				} else {
+					s.transitionFloorLocked(sess, sess.FloorNum-1)
+				}
+			} else {
+				sess.AddMessage("There are no stairs up here.")
+			}
 		} else {
 			sess.AddMessage("There are no stairs up here.")
 		}
@@ -426,7 +455,7 @@ func (s *Server) processActionLocked(sess *Session, action Action) {
 			}
 			// No combat in safe zones.
 			if floor.SafeZone {
-				sess.AddMessage("Emberveil is a place of peace. Violence is forbidden here.")
+				sess.AddMessage(fmt.Sprintf("%s is a place of peace. Violence is forbidden here.", assets.FloorName(floor.Num)))
 				return
 			}
 			name := entityGlyph(floor.World, target)
@@ -609,14 +638,15 @@ func (s *Server) transitionFloorLocked(sess *Session, targetFloor int) {
 	sess.Renderer = render.NewRenderer(sess.Screen, targetFloor)
 	sess.Renderer.CenterOn(spawnX, spawnY)
 
-	if targetFloor == 0 {
-		sess.AddMessage(fmt.Sprintf("%s returns to Emberveil.", sess.Name))
+	df := assets.DungeonFloor(targetFloor)
+	if df == 0 {
+		sess.AddMessage(fmt.Sprintf("%s returns to %s.", sess.Name, assets.FloorName(targetFloor)))
 	} else if targetFloor > fromFloor {
-		sess.AddMessage(fmt.Sprintf("%s descends into %s (Floor %d).", sess.Name, assets.FloorNames[targetFloor], targetFloor))
+		sess.AddMessage(fmt.Sprintf("%s descends into %s (Floor %d).", sess.Name, assets.FloorName(targetFloor), df))
 	} else {
-		sess.AddMessage(fmt.Sprintf("%s ascends to %s (Floor %d).", sess.Name, assets.FloorNames[targetFloor], targetFloor))
+		sess.AddMessage(fmt.Sprintf("%s ascends to %s (Floor %d).", sess.Name, assets.FloorName(targetFloor), df))
 	}
-	if lore := assets.FloorLore[targetFloor]; len(lore) > 0 {
+	if lore := assets.FloorLoreSnippets(targetFloor); len(lore) > 0 {
 		sess.AddMessage(lore[floor.Rng.Intn(len(lore))])
 	}
 }
@@ -711,8 +741,9 @@ func (s *Server) respawnLocked(sess *Session) {
 	sess.Branch = ""
 	sess.FloorsVisited = make(map[int]bool)
 
-	sess.AddMessage("You respawn in Emberveil...")
-	s.spawnPlayerLocked(sess, 0)
+	respawnCity := assets.DungeonCityFloor(sess.FloorNum)
+	sess.AddMessage(fmt.Sprintf("You respawn in %s...", assets.FloorName(respawnCity)))
+	s.spawnPlayerLocked(sess, respawnCity)
 	s.Log.Info("player respawned", "player", sess.Name)
 }
 
@@ -871,10 +902,10 @@ func (s *Server) isPlayerEntity(id ecs.EntityID) bool {
 }
 
 func (s *Server) checkVictoryLocked(floor *Floor, sess *Session) {
-	if floor.Num != MaxFloors {
+	if assets.DungeonFloor(floor.Num) != MaxFloors {
 		return
 	}
-	bossGlyph := assets.BossGlyphs[floor.Num]
+	bossGlyph := assets.BossGlyph(floor.Num)
 	if bossGlyph == "" {
 		return
 	}
@@ -886,7 +917,11 @@ func (s *Server) checkVictoryLocked(floor *Floor, sess *Session) {
 	}
 	sess.RunLog.Victory = true
 	sess.RunLog.CauseOfDeath = ""
-	floorMessage(s.sessions, floor.Num, fmt.Sprintf("🏆 %s has defeated the boss! The Spire's heart is theirs!", sess.Name))
+	if assets.IsChronoliths(floor.Num) {
+		floorMessage(s.sessions, floor.Num, fmt.Sprintf("🏆 %s has defeated the boss! The Eternal Moment is shattered!", sess.Name))
+	} else {
+		floorMessage(s.sessions, floor.Num, fmt.Sprintf("🏆 %s has defeated the boss! The Spire's heart is theirs!", sess.Name))
+	}
 	sess.RunLog.Timestamp = time.Now()
 	sess.RunLog.Level = sess.Level
 	sess.RunLog.SkillsLearned = sess.LearnedSkills

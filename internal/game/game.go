@@ -243,11 +243,11 @@ func (g *Game) loadFloor(floor int) {
 	g.renderer.CenterOn(px, py)
 
 	if floor == 1 {
-		g.addMessage(fmt.Sprintf("You enter the %s as a %s.", assets.FloorNames[floor], g.selectedClass.Name))
+		g.addMessage(fmt.Sprintf("You enter the %s as a %s.", assets.FloorName(floor), g.selectedClass.Name))
 	} else {
-		g.addMessage(fmt.Sprintf("You descend into %s (Floor %d).", assets.FloorNames[floor], floor))
+		g.addMessage(fmt.Sprintf("You descend into %s (Floor %d).", assets.FloorName(floor), floor))
 	}
-	if lore := assets.FloorLore[floor]; len(lore) > 0 {
+	if lore := assets.FloorLoreSnippets(floor); len(lore) > 0 {
 		g.addMessage(lore[g.rng.Intn(len(lore))])
 	}
 }
@@ -925,7 +925,7 @@ func (g *Game) checkVictory() {
 	if g.floor != MaxFloors {
 		return
 	}
-	bossGlyph := assets.BossGlyphs[g.floor]
+	bossGlyph := assets.BossGlyph(g.floor)
 	if bossGlyph == "" {
 		return
 	}
@@ -1114,7 +1114,7 @@ func (g *Game) showEndScreen() bool {
 	floorName := ""
 	if g.runLog.FloorsReached >= 1 && g.runLog.FloorsReached <= MaxFloors {
 		floorName = fmt.Sprintf("Floor %d — %s",
-			g.runLog.FloorsReached, assets.FloorNames[g.runLog.FloorsReached])
+			g.runLog.FloorsReached, assets.FloorName(g.runLog.FloorsReached))
 	}
 
 	white := tcell.StyleDefault.Foreground(tcell.ColorWhite)

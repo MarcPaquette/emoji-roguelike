@@ -466,12 +466,24 @@ func ThreatForGlyph(glyph string) int {
 			}
 		}
 	}
+	for _, table := range ChronolithsEnemyTables {
+		for _, entry := range table {
+			if entry.Glyph == glyph {
+				return entry.ThreatCost
+			}
+		}
+	}
 	return 0
 }
 
 // IsEliteGlyph returns true if the glyph belongs to a floor elite.
 func IsEliteGlyph(glyph string) bool {
 	for _, e := range floorElites {
+		if e != nil && e.Glyph == glyph {
+			return true
+		}
+	}
+	for _, e := range chronolithsFloorElites {
 		if e != nil && e.Glyph == glyph {
 			return true
 		}

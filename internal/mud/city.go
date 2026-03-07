@@ -132,6 +132,13 @@ func newCityFloor(rng *rand.Rand) *Floor {
 	gmap.Set(54, 47, gamemap.MakeDoor()) // Shop → Storeroom
 	gmap.Set(52, 44, gamemap.MakeDoor()) // north main entrance
 
+	// ── Temporal Gate (east of town square) ─────────────────────────────
+	// A small structure housing a portal to Anchorpoint (The Chronoliths).
+	carveBuilding(gmap, 78, 28, 86, 34)
+	gmap.Set(82, 34, gamemap.MakeDoor())   // south entrance
+	portalX, portalY := 82, 31
+	gmap.Set(portalX, portalY, gamemap.MakeStairsDown()) // portal stairs
+
 	// ── Rooms list (for findFreeSpawn) ───────────────────────────────────
 	gmap.Rooms = []gamemap.Rect{
 		// Tavern
@@ -170,6 +177,8 @@ func newCityFloor(rng *rand.Rand) *Floor {
 		// General Store
 		{X1: 46, Y1: 45, X2: 53, Y2: 49}, // Main Shop
 		{X1: 55, Y1: 45, X2: 61, Y2: 49}, // Storeroom
+		// Temporal Gate
+		{X1: 79, Y1: 29, X2: 85, Y2: 33}, // Gate Room
 	}
 
 	// ── Place NPCs ───────────────────────────────────────────────────────
@@ -241,6 +250,7 @@ func newCityFloor(rng *rand.Rand) *Floor {
 	factory.NewInscription(w, insc[3], 48, 45) // General Store entrance
 	factory.NewInscription(w, insc[4], 3, 45)  // Market entrance
 	factory.NewInscription(w, insc[5], 35, 34) // Town square memorial
+	factory.NewInscription(w, "TEMPORAL TRANSIT: Anchorpoint. Step onto the stairs to travel to The Chronoliths.", 82, 29) // Gate room
 
 	// ── Furniture ────────────────────────────────────────────────────────
 	pf := func(glyph, name, desc string, x, y int) {
@@ -453,6 +463,14 @@ func newCityFloor(rng *rand.Rand) *Floor {
 		"A locked cabinet of small keys. The keys are labelled in a code only Yeva understands. She has never needed to explain it.",
 		60, 47)
 
+	// ── Temporal Gate (x=79..85, y=29..33) ───────────────────────────────
+	pf("⏳", "Temporal Marker",
+		"An amber obelisk that hums with displaced time. The air around it shimmers. Through it, Anchorpoint waits.",
+		80, 30)
+	pf("⏰", "Temporal Clock",
+		"A clock showing two times simultaneously. One is Emberveil time. The other is wherever the portal leads.",
+		84, 30)
+
 	return &Floor{
 		Num:             0,
 		World:           w,
@@ -466,6 +484,9 @@ func newCityFloor(rng *rand.Rand) *Floor {
 		StairsUpY:       -1,
 		RespawnCooldown: -1,
 		SafeZone:        true,
+		Portals: map[[2]int]int{
+			{portalX, portalY}: 100, // Emberveil → Anchorpoint
+		},
 	}
 }
 

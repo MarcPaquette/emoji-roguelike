@@ -29,7 +29,7 @@ func XPForEliteKill(floor int) int {
 
 // XPForFloorEntry returns XP for first-time entry to a floor.
 func XPForFloorEntry(floor int) int {
-	return floor * 150
+	return DungeonFloor(floor) * 150
 }
 
 const (

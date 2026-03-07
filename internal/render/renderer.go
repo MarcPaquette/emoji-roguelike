@@ -50,11 +50,7 @@ func (r *Renderer) DrawFrame(w *ecs.World, gmap *gamemap.GameMap, playerID ecs.E
 
 // drawMap renders all visible/explored tiles using per-floor emoji glyphs.
 func (r *Renderer) drawMap(gmap *gamemap.GameMap) {
-	fi := r.floor
-	if fi < 0 || fi >= len(TileThemes) {
-		fi = 1
-	}
-	theme := TileThemes[fi]
+	theme := TileTheme(r.floor)
 	style := tcell.StyleDefault.Background(tcell.ColorBlack)
 
 	for y := 0; y < gmap.Height; y++ {
